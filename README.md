@@ -118,8 +118,8 @@ Para permitir que outros acessem:
 ## 🚧 Roadmap
 
 - [x] Fase 1: Interface web local
-- [ ] Fase 2: Login e controle de acesso
-- [ ] Fase 3: Histórico de impressões
+- [x] Fase 2: Login e controle de acesso
+- [x] Fase 3: Histórico de impressões
 - [ ] Fase 4: Integração com ciclo de vida do produto
 
 ---
