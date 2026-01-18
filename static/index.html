@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastPrint - Linea Brasil</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #141414;
+            --bg-tertiary: #1a1a1a;
+            --accent: #ff6b35;
+            --accent-hover: #ff8c5a;
+            --accent-dim: #ff6b3520;
+            --text-primary: #ffffff;
+            --text-secondary: #888888;
+            --text-muted: #555555;
+            --border: #2a2a2a;
+            --success: #4ade80;
+            --error: #f87171;
+            --warning: #fbbf24;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo { display: flex; align-items: center; gap: 1rem; }
+
+        .logo-icon {
+            width: 48px; height: 48px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem;
+        }
+
+        .logo-text h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
+        .logo-text span { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 2px; }
+
+        .status-badge {
+            display: flex; align-items: center; gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px; height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        .main { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+        .section {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .section h2 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .section h2::before {
+            content: '';
+            width: 4px; height: 16px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+
+        .input-group { margin-bottom: 1.5rem; }
+        .input-group:last-child { margin-bottom: 0; }
+        .input-group label { display: block; font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 0.5rem; }
+
+        .input-wrapper { display: flex; gap: 0.75rem; }
+
+        .input-wrapper input, .search-wrapper input {
+            flex: 1;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+
+        .input-wrapper input:focus, .search-wrapper input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        .input-wrapper input::placeholder, .search-wrapper input::placeholder { color: var(--text-muted); }
+
+        .btn {
+            padding: 1rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); }
+        .btn-secondary:hover { background: var(--border); }
+
+        .btn-sm { padding: 0.5rem 1rem; font-size: 0.8rem; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .select-wrapper { position: relative; }
+
+        .select-wrapper select {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            cursor: pointer;
+            appearance: none;
+        }
+
+        .select-wrapper::after {
+            content: '▼';
+            position: absolute;
+            right: 1.25rem;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            pointer-events: none;
+        }
+
+        .select-wrapper select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        /* Search Results */
+        .search-results { margin-top: 1rem; max-height: 300px; overflow-y: auto; }
+
+        .search-result-item {
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .search-result-item:hover { border-color: var(--accent); background: var(--accent-dim); }
+
+        .search-result-info h4 { font-size: 0.95rem; font-family: 'JetBrains Mono', monospace; margin-bottom: 0.25rem; }
+        .search-result-info span { font-size: 0.8rem; color: var(--text-secondary); }
+
+        .search-result-meta { text-align: right; }
+        .search-result-meta .pdf-count { background: var(--accent-dim); color: var(--accent); padding: 0.25rem 0.75rem; border-radius: 100px; font-size: 0.8rem; font-weight: 600; }
+        .search-result-meta .status { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+        /* Selected Product */
+        .selected-product {
+            background: var(--accent-dim);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .selected-product-info h4 { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; color: var(--accent); }
+        .selected-product-info span { font-size: 0.8rem; color: var(--text-secondary); }
+
+        .btn-clear { background: transparent; border: 1px solid var(--accent); color: var(--accent); padding: 0.5rem 1rem; }
+        .btn-clear:hover { background: var(--accent); color: white; }
+
+        /* Results Section */
+        .results-section { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+
+        .results-header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .results-header h2 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0;
+        }
+
+        .results-header h2::before {
+            content: '';
+            width: 4px; height: 16px;
+            background: var(--accent);
+            border-radius: 2px;
+        }
+
+        .results-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+        .file-count { background: var(--accent-dim); color: var(--accent); padding: 0.5rem 1rem; border-radius: 100px; font-size: 0.85rem; font-weight: 600; }
+
+        .results-content { max-height: 400px; overflow-y: auto; }
+        .results-content::-webkit-scrollbar { width: 8px; }
+        .results-content::-webkit-scrollbar-track { background: var(--bg-tertiary); }
+        .results-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+        .file-item {
+            padding: 1rem 2rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: background 0.2s;
+        }
+
+        .file-item:hover { background: var(--bg-tertiary); }
+        .file-item:last-child { border-bottom: none; }
+
+        .file-checkbox { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; }
+
+        .file-icon {
+            width: 40px; height: 40px;
+            background: #dc262620;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.75rem;
+            color: #dc2626;
+            font-weight: 700;
+        }
+
+        .file-info { flex: 1; }
+        .file-name { font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; color: var(--text-primary); margin-bottom: 0.25rem; }
+        .file-meta { font-size: 0.8rem; color: var(--text-secondary); display: flex; gap: 1rem; }
+
+        .file-status {
+            width: 24px; height: 24px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.8rem;
+        }
+
+        .file-status.pending { background: var(--bg-tertiary); color: var(--text-muted); }
+        .file-status.success { background: #4ade8020; color: var(--success); }
+        .file-status.error { background: #f8717120; color: var(--error); }
+
+        .print-section {
+            padding: 1.5rem 2rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-tertiary);
+        }
+
+        .print-info { font-size: 0.9rem; color: var(--text-secondary); }
+        .print-info strong { color: var(--text-primary); }
+
+        .btn-print {
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            background: linear-gradient(135deg, var(--accent), #ff8c5a);
+        }
+
+        .btn-print:hover { transform: translateY(-2px); box-shadow: 0 10px 20px -5px rgba(255, 107, 53, 0.3); }
+
+        .empty-state { padding: 4rem 2rem; text-align: center; color: var(--text-secondary); }
+        .empty-state-icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+        .empty-state h3 { font-size: 1.1rem; color: var(--text-primary); margin-bottom: 0.5rem; }
+
+        .loading { display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 2rem; color: var(--text-secondary); }
+
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .toast-container { position: fixed; bottom: 2rem; right: 2rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.75rem; }
+
+        .toast {
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            animation: slideIn 0.3s ease;
+            box-shadow: 0 10px 30px -5px rgba(0,0,0,0.5);
+        }
+
+        .toast.success { background: #4ade8020; border: 1px solid #4ade80; color: var(--success); }
+        .toast.error { background: #f8717120; border: 1px solid #f87171; color: var(--error); }
+        .toast.warning { background: #fbbf2420; border: 1px solid #fbbf24; color: var(--warning); }
+
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+        .folder-badge { background: var(--bg-primary); padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.75rem; color: var(--accent); font-family: 'JetBrains Mono', monospace; }
+
+        .progress-container { padding: 1.5rem 2rem; border-top: 1px solid var(--border); display: none; }
+        .progress-container.active { display: block; }
+
+        .progress-bar { height: 4px; background: var(--bg-primary); border-radius: 2px; overflow: hidden; margin-bottom: 0.75rem; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #ff8c5a); border-radius: 2px; transition: width 0.3s ease; }
+        .progress-text { font-size: 0.85rem; color: var(--text-secondary); display: flex; justify-content: space-between; }
+
+        @media (max-width: 768px) {
+            .header { flex-direction: column; gap: 1rem; text-align: center; }
+            .input-wrapper { flex-direction: column; }
+            .print-section { flex-direction: column; gap: 1rem; }
+            .results-header { flex-direction: column; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">🖨️</div>
+            <div class="logo-text">
+                <h1>FastPrint</h1>
+                <span>Linea Brasil</span>
+            </div>
+        </div>
+        <div class="status-badge">
+            <div class="status-dot"></div>
+            Sistema Operacional
+        </div>
+    </header>
+
+    <main class="main">
+        <!-- Search Section -->
+        <section class="section">
+            <h2>🔍 Buscar Produto</h2>
+            <div class="search-wrapper">
+                <input type="text" id="searchInput" placeholder="Digite o código ou nome do produto (ex: 819999991 ou AEREO)">
+            </div>
+            <div id="searchResults" class="search-results"></div>
+        </section>
+
+        <!-- Config Section -->
+        <section class="section">
+            <h2>⚙️ Configuração</h2>
+            
+            <div class="selected-product" id="selectedProduct" style="display: none;">
+                <div class="selected-product-info">
+                    <h4 id="selectedProductName">-</h4>
+                    <span id="selectedProductPath">-</span>
+                </div>
+                <button class="btn btn-clear" onclick="clearSelection()">✕ Limpar</button>
+            </div>
+
+            <div class="input-group">
+                <label>Caminho da Pasta do Produto</label>
+                <div class="input-wrapper">
+                    <input type="text" id="folderPath" placeholder="L:\Linea Brasil\...\810015103 - AEREO 1.2M BLESS">
+                    <button class="btn btn-secondary" onclick="scanFolder()">🔍 Escanear</button>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label>Impressora</label>
+                <div class="select-wrapper">
+                    <select id="printerSelect">
+                        <option value="">Carregando impressoras...</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section" id="resultsSection" style="display: none;">
+            <div class="results-header">
+                <h2>Arquivos Encontrados</h2>
+                <div class="results-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="selectAll()">☑ Todos</button>
+                    <button class="btn btn-secondary btn-sm" onclick="deselectAll()">☐ Nenhum</button>
+                    <span class="file-count" id="fileCount">0 PDFs</span>
+                </div>
+            </div>
+            
+            <div class="results-content" id="fileList"></div>
+
+            <div class="progress-container" id="progressContainer">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text">
+                    <span id="progressText">Imprimindo...</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+            </div>
+
+            <div class="print-section">
+                <div class="print-info">
+                    <strong id="selectedCount">0</strong> de <strong id="totalFiles">0</strong> selecionados
+                </div>
+                <button class="btn btn-primary btn-print" id="printBtn" onclick="printSelected()">
+                    🖨️ Imprimir Selecionados
+                </button>
+            </div>
+        </section>
+
+        <!-- Empty State -->
+        <section class="results-section" id="emptyState">
+            <div class="empty-state">
+                <div class="empty-state-icon">📁</div>
+                <h3>Nenhuma pasta selecionada</h3>
+                <p>Busque um produto ou cole o caminho da pasta e clique em "Escanear"</p>
+            </div>
+        </section>
+    </main>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        let currentFiles = [];
+        let searchTimeout = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            loadPrinters();
+            document.getElementById('folderPath').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') scanFolder();
+            });
+            document.getElementById('searchInput').addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => searchProducts(e.target.value), 300);
+            });
+        });
+
+        async function searchProducts(query) {
+            const container = document.getElementById('searchResults');
+            if (!query || query.length < 3) { container.innerHTML = ''; return; }
+
+            container.innerHTML = '<div class="loading"><div class="spinner"></div>Buscando...</div>';
+
+            try {
+                const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.results.length === 0) {
+                    container.innerHTML = `<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">Nenhum produto encontrado</div>`;
+                    return;
+                }
+
+                container.innerHTML = data.results.map(p => `
+                    <div class="search-result-item" onclick="selectProduct('${p.path.replace(/\\/g, '\\\\')}', '${p.name}')">
+                        <div class="search-result-info">
+                            <h4>${p.name}</h4>
+                            <span>${p.path}</span>
+                        </div>
+                        <div class="search-result-meta">
+                            <div class="pdf-count">${p.pdf_count} PDFs</div>
+                            <div class="status">${p.status}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                container.innerHTML = `<div style="padding: 1rem; color: var(--error);">Erro ao buscar</div>`;
+            }
+        }
+
+        function selectProduct(path, name) {
+            document.getElementById('folderPath').value = path;
+            document.getElementById('searchInput').value = '';
+            document.getElementById('searchResults').innerHTML = '';
+            document.getElementById('selectedProduct').style.display = 'flex';
+            document.getElementById('selectedProductName').textContent = name;
+            document.getElementById('selectedProductPath').textContent = path;
+            scanFolder();
+        }
+
+        function clearSelection() {
+            document.getElementById('folderPath').value = '';
+            document.getElementById('selectedProduct').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'none';
+            document.getElementById('emptyState').style.display = 'block';
+            currentFiles = [];
+        }
+
+        async function loadPrinters() {
+            try {
+                const response = await fetch('/api/printers');
+                const data = await response.json();
+                const select = document.getElementById('printerSelect');
+                select.innerHTML = '<option value="">Impressora Padrão do Sistema</option>';
+                data.printers.forEach(printer => {
+                    const option = document.createElement('option');
+                    option.value = printer;
+                    option.textContent = printer;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                showToast('Erro ao carregar impressoras', 'error');
+            }
+        }
+
+        async function scanFolder() {
+            const path = document.getElementById('folderPath').value.trim();
+            if (!path) { showToast('Digite o caminho da pasta', 'warning'); return; }
+
+            document.getElementById('emptyState').style.display = 'none';
+            document.getElementById('resultsSection').style.display = 'block';
+            document.getElementById('fileList').innerHTML = '<div class="loading"><div class="spinner"></div>Escaneando...</div>';
+
+            try {
+                const response = await fetch('/api/list-pdfs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path })
+                });
+
+                if (!response.ok) throw new Error((await response.json()).detail);
+
+                const data = await response.json();
+                currentFiles = data.files.map(f => ({ ...f, selected: false }));
+                renderFiles();
+                updateCounts();
+                showToast(`${data.total} arquivos encontrados`, data.total > 0 ? 'success' : 'warning');
+            } catch (error) {
+                showToast(error.message, 'error');
+                document.getElementById('fileList').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">❌</div>
+                        <h3>Erro ao escanear</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderFiles() {
+            const container = document.getElementById('fileList');
+            if (currentFiles.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>Nenhum PDF encontrado</h3>
+                        <p>Não há PDFs nas pastas ENG</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = currentFiles.map((file, i) => `
+                <div class="file-item" id="file-${i}">
+                    <input type="checkbox" class="file-checkbox" ${file.selected ? 'checked' : ''} onchange="toggleFile(${i})">
+                    <div class="file-icon">PDF</div>
+                    <div class="file-info">
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-meta">
+                            <span class="folder-badge">${file.folder}</span>
+                            <span>${file.size_kb} KB</span>
+                        </div>
+                    </div>
+                    <div class="file-status pending" id="status-${i}">⏳</div>
+                </div>
+            `).join('');
+        }
+
+        function toggleFile(i) { currentFiles[i].selected = !currentFiles[i].selected; updateCounts(); }
+        function selectAll() { currentFiles.forEach(f => f.selected = true); renderFiles(); updateCounts(); }
+        function deselectAll() { currentFiles.forEach(f => f.selected = false); renderFiles(); updateCounts(); }
+
+        function updateCounts() {
+            const selected = currentFiles.filter(f => f.selected).length;
+            const total = currentFiles.length;
+            document.getElementById('fileCount').textContent = `${total} PDFs`;
+            document.getElementById('totalFiles').textContent = total;
+            document.getElementById('selectedCount').textContent = selected;
+            
+            const btn = document.getElementById('printBtn');
+            btn.disabled = selected === 0;
+            btn.textContent = selected === total ? '🖨️ Imprimir Todos' : `🖨️ Imprimir ${selected} Selecionados`;
+        }
+
+        async function printSelected() {
+            const selected = currentFiles.filter(f => f.selected);
+            if (selected.length === 0) { showToast('Selecione pelo menos um arquivo', 'warning'); return; }
+
+            const path = document.getElementById('folderPath').value.trim();
+            const printer = document.getElementById('printerSelect').value || null;
+            const btn = document.getElementById('printBtn');
+            
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Imprimindo...';
+            document.getElementById('progressContainer').classList.add('active');
+
+            try {
+                const response = await fetch('/api/print', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder_path: path, printer, selected_files: selected.map(f => f.path) })
+                });
+
+                const data = await response.json();
+                let idx = 0;
+                
+                currentFiles.forEach((file, i) => {
+                    if (file.selected && data.results[idx]) {
+                        const el = document.getElementById(`status-${i}`);
+                        el.className = `file-status ${data.results[idx].success ? 'success' : 'error'}`;
+                        el.textContent = data.results[idx].success ? '✓' : '✗';
+                        idx++;
+                        
+                        const pct = Math.round((idx / data.total) * 100);
+                        document.getElementById('progressFill').style.width = `${pct}%`;
+                        document.getElementById('progressPercent').textContent = `${pct}%`;
+                    }
+                });
+
+                document.getElementById('progressText').textContent = 'Concluído!';
+                showToast(`${data.printed}/${data.total} arquivos impressos!`, data.printed === data.total ? 'success' : 'warning');
+            } catch (error) {
+                showToast('Erro: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                updateCounts();
+            }
+        }
+
+        function showToast(msg, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerHTML = `<span>${{success:'✓',error:'✗',warning:'⚠'}[type]}</span> ${msg}`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.animation = 'slideIn 0.3s ease reverse'; setTimeout(() => toast.remove(), 300); }, 4000);
+        }
+    </script>
+</body>
+</html>
