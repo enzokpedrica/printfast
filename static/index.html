@@ -374,322 +374,544 @@
             .print-section { flex-direction: column; gap: 1rem; }
             .results-header { flex-direction: column; align-items: flex-start; }
         }
+
+        /* Login Screen */
+        .login-screen {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .login-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 3rem;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .login-box .logo {
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-box h2 {
+            text-align: center;
+            margin-bottom: 2rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .login-form .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .login-form input {
+            width: 100%;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+
+        .login-form input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        .login-form .btn {
+            width: 100%;
+            justify-content: center;
+            margin-top: 0.5rem;
+        }
+
+        .login-error {
+            background: #f8717120;
+            border: 1px solid var(--error);
+            color: var(--error);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 1rem;
+            display: none;
+        }
+
+        .login-error.show {
+            display: block;
+        }
+
+        .user-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.5rem 1rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .user-badge:hover {
+            border-color: var(--accent);
+        }
+
+        .user-badge .user-avatar {
+            width: 28px;
+            height: 28px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: white;
+        }
     </style>
 </head>
 <body>
-    <header class="header">
-        <div class="logo">
-            <div class="logo-icon">🖨️</div>
-            <div class="logo-text">
-                <h1>FastPrint</h1>
-                <span>Linea Brasil</span>
+    <!-- Login Screen -->
+    <div class="login-screen" id="loginScreen">
+        <div class="login-box">
+            <div class="logo">
+                <div class="logo-icon">🖨️</div>
+                <div class="logo-text">
+                    <h1>FastPrint</h1>
+                    <span>Linea Brasil</span>
+                </div>
             </div>
+            <h2>Acesso ao Sistema</h2>
+            <div class="login-error" id="loginError">Usuário ou senha inválidos</div>
+            <form class="login-form" onsubmit="handleLogin(event)">
+                <div class="input-group">
+                    <label>Usuário</label>
+                    <input type="text" id="loginUsuario" placeholder="seu.usuario" required>
+                </div>
+                <div class="input-group">
+                    <label>Senha</label>
+                    <input type="password" id="loginSenha" placeholder="••••••••" required>
+                </div>
+                <button type="submit" class="btn btn-primary" id="loginBtn">Entrar</button>
+            </form>
         </div>
-        <div class="status-badge">
-            <div class="status-dot"></div>
-            Sistema Operacional
-        </div>
-    </header>
+    </div>
 
-    <main class="main">
-        <!-- Search Section -->
-        <section class="section">
-            <h2>🔍 Buscar Produto</h2>
-            <div class="search-wrapper">
-                <input type="text" id="searchInput" placeholder="Digite o código ou nome do produto (ex: 819999991 ou AEREO)">
-            </div>
-            <div id="searchResults" class="search-results"></div>
-        </section>
-
-        <!-- Config Section -->
-        <section class="section">
-            <h2>⚙️ Configuração</h2>
-            
-            <div class="selected-product" id="selectedProduct" style="display: none;">
-                <div class="selected-product-info">
-                    <h4 id="selectedProductName">-</h4>
-                    <span id="selectedProductPath">-</span>
-                </div>
-                <button class="btn btn-clear" onclick="clearSelection()">✕ Limpar</button>
-            </div>
-
-            <div class="input-group">
-                <label>Caminho da Pasta do Produto</label>
-                <div class="input-wrapper">
-                    <input type="text" id="folderPath" placeholder="L:\Linea Brasil\...\810015103 - AEREO 1.2M BLESS">
-                    <button class="btn btn-secondary" onclick="scanFolder()">🔍 Escanear</button>
+    <!-- App (escondido até login) -->
+    <div id="appContainer" style="display: none;">
+        <header class="header">
+            <div class="logo">
+                <div class="logo-icon">🖨️</div>
+                <div class="logo-text">
+                    <h1>FastPrint</h1>
+                    <span>Linea Brasil</span>
                 </div>
             </div>
-
-            <div class="input-group">
-                <label>Impressora</label>
-                <div class="select-wrapper">
-                    <select id="printerSelect">
-                        <option value="">Carregando impressoras...</option>
-                    </select>
-                </div>
+            <div class="user-badge" onclick="handleLogout()">
+                <div class="user-avatar" id="userAvatar">EP</div>
+                <span id="userName">Enzo Pedrica</span>
+                <span style="margin-left: 0.5rem; opacity: 0.5;">✕</span>
             </div>
-        </section>
+        </header>
 
-        <!-- Results Section -->
-        <section class="results-section" id="resultsSection" style="display: none;">
-            <div class="results-header">
-                <h2>Arquivos Encontrados</h2>
-                <div class="results-actions">
-                    <button class="btn btn-secondary btn-sm" onclick="selectAll()">☑ Todos</button>
-                    <button class="btn btn-secondary btn-sm" onclick="deselectAll()">☐ Nenhum</button>
-                    <span class="file-count" id="fileCount">0 PDFs</span>
+        <main class="main">
+            <!-- Search Section -->
+            <section class="section">
+                <h2>🔍 Buscar Produto</h2>
+                <div class="search-wrapper">
+                    <input type="text" id="searchInput" placeholder="Digite o código ou nome do produto (ex: 819999991 ou AEREO)">
                 </div>
-            </div>
-            
-            <div class="results-content" id="fileList"></div>
+                <div id="searchResults" class="search-results"></div>
+            </section>
 
-            <div class="progress-container" id="progressContainer">
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            <!-- Config Section -->
+            <section class="section">
+                <h2>⚙️ Configuração</h2>
+                
+                <div class="selected-product" id="selectedProduct" style="display: none;">
+                    <div class="selected-product-info">
+                        <h4 id="selectedProductName">-</h4>
+                        <span id="selectedProductPath">-</span>
+                    </div>
+                    <button class="btn btn-clear" onclick="clearSelection()">✕ Limpar</button>
                 </div>
-                <div class="progress-text">
-                    <span id="progressText">Imprimindo...</span>
-                    <span id="progressPercent">0%</span>
-                </div>
-            </div>
 
-            <div class="print-section">
-                <div class="print-info">
-                    <strong id="selectedCount">0</strong> de <strong id="totalFiles">0</strong> selecionados
+                <div class="input-group">
+                    <label>Caminho da Pasta do Produto</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="folderPath" placeholder="L:\Linea Brasil\...\810015103 - AEREO 1.2M BLESS">
+                        <button class="btn btn-secondary" onclick="scanFolder()">🔍 Escanear</button>
+                    </div>
                 </div>
-                <button class="btn btn-primary btn-print" id="printBtn" onclick="printSelected()">
-                    🖨️ Imprimir Selecionados
-                </button>
-            </div>
-        </section>
 
-        <!-- Empty State -->
-        <section class="results-section" id="emptyState">
-            <div class="empty-state">
-                <div class="empty-state-icon">📁</div>
-                <h3>Nenhuma pasta selecionada</h3>
-                <p>Busque um produto ou cole o caminho da pasta e clique em "Escanear"</p>
-            </div>
-        </section>
-    </main>
+                <div class="input-group">
+                    <label>Impressora</label>
+                    <div class="select-wrapper">
+                        <select id="printerSelect">
+                            <option value="">Carregando impressoras...</option>
+                        </select>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" style="display: none;">
+                <div class="results-header">
+                    <h2>Arquivos Encontrados</h2>
+                    <div class="results-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="selectAll()">☑ Todos</button>
+                        <button class="btn btn-secondary btn-sm" onclick="deselectAll()">☐ Nenhum</button>
+                        <span class="file-count" id="fileCount">0 PDFs</span>
+                    </div>
+                </div>
+                
+                <div class="results-content" id="fileList"></div>
+
+                <div class="progress-container" id="progressContainer">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-text">
+                        <span id="progressText">Imprimindo...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                </div>
+
+                <div class="print-section">
+                    <div class="print-info">
+                        <strong id="selectedCount">0</strong> de <strong id="totalFiles">0</strong> selecionados
+                    </div>
+                    <button class="btn btn-primary btn-print" id="printBtn" onclick="printSelected()">
+                        🖨️ Imprimir Selecionados
+                    </button>
+                </div>
+            </section>
+
+            <!-- Empty State -->
+            <section class="results-section" id="emptyState">
+                <div class="empty-state">
+                    <div class="empty-state-icon">📁</div>
+                    <h3>Nenhuma pasta selecionada</h3>
+                    <p>Busque um produto ou cole o caminho da pasta e clique em "Escanear"</p>
+                </div>
+            </section>
+        </main>
+    </div>
 
     <div class="toast-container" id="toastContainer"></div>
 
     <script>
-        let currentFiles = [];
-        let searchTimeout = null;
+    let currentFiles = [];
+    let searchTimeout = null;
+    let authToken = null;
+    let currentUser = null;
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadPrinters();
-            document.getElementById('folderPath').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') scanFolder();
-            });
-            document.getElementById('searchInput').addEventListener('input', (e) => {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(() => searchProducts(e.target.value), 300);
-            });
+    document.addEventListener('DOMContentLoaded', () => {
+        checkAuth();
+    });
+
+    function checkAuth() {
+        authToken = localStorage.getItem('fastprint_token');
+        const userStr = localStorage.getItem('fastprint_user');
+        
+        if (authToken && userStr) {
+            currentUser = JSON.parse(userStr);
+            showApp();
+        } else {
+            showLogin();
+        }
+    }
+
+    function showLogin() {
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('appContainer').style.display = 'none';
+    }
+
+    function showApp() {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('appContainer').style.display = 'block';
+        
+        document.getElementById('userName').textContent = currentUser.nome;
+        document.getElementById('userAvatar').textContent = getInitials(currentUser.nome);
+        
+        loadPrinters();
+        document.getElementById('folderPath').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') scanFolder();
         });
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => searchProducts(e.target.value), 300);
+        });
+    }
 
-        async function searchProducts(query) {
-            const container = document.getElementById('searchResults');
-            if (!query || query.length < 3) { container.innerHTML = ''; return; }
+    function getInitials(nome) {
+        return nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
+    }
 
-            container.innerHTML = '<div class="loading"><div class="spinner"></div>Buscando...</div>';
+    async function handleLogin(e) {
+        e.preventDefault();
+        const btn = document.getElementById('loginBtn');
+        const errorEl = document.getElementById('loginError');
+        
+        btn.disabled = true;
+        btn.textContent = 'Entrando...';
+        errorEl.classList.remove('show');
 
-            try {
-                const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
-                const data = await response.json();
+        try {
+            const response = await fetch('/api/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    usuario: document.getElementById('loginUsuario').value,
+                    senha: document.getElementById('loginSenha').value
+                })
+            });
 
-                if (data.results.length === 0) {
-                    container.innerHTML = `<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">Nenhum produto encontrado</div>`;
-                    return;
-                }
+            const data = await response.json();
 
-                container.innerHTML = data.results.map(p => `
-                    <div class="search-result-item" onclick="selectProduct('${p.path.replace(/\\/g, '\\\\')}', '${p.name}')">
-                        <div class="search-result-info">
-                            <h4>${p.name}</h4>
-                            <span>${p.path}</span>
-                        </div>
-                        <div class="search-result-meta">
-                            <div class="pdf-count">${p.pdf_count} PDFs</div>
-                            <div class="status">${p.status}</div>
-                        </div>
-                    </div>
-                `).join('');
-            } catch (error) {
-                container.innerHTML = `<div style="padding: 1rem; color: var(--error);">Erro ao buscar</div>`;
+            if (response.ok && data.success) {
+                authToken = data.token;
+                currentUser = data.user;
+                localStorage.setItem('fastprint_token', authToken);
+                localStorage.setItem('fastprint_user', JSON.stringify(currentUser));
+                showApp();
+            } else {
+                errorEl.textContent = data.detail || 'Usuário ou senha inválidos';
+                errorEl.classList.add('show');
             }
+        } catch (error) {
+            errorEl.textContent = 'Erro ao conectar com o servidor';
+            errorEl.classList.add('show');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Entrar';
         }
+    }
 
-        function selectProduct(path, name) {
-            document.getElementById('folderPath').value = path;
-            document.getElementById('searchInput').value = '';
-            document.getElementById('searchResults').innerHTML = '';
-            document.getElementById('selectedProduct').style.display = 'flex';
-            document.getElementById('selectedProductName').textContent = name;
-            document.getElementById('selectedProductPath').textContent = path;
-            scanFolder();
+    function handleLogout() {
+        if (confirm('Deseja sair do sistema?')) {
+            localStorage.removeItem('fastprint_token');
+            localStorage.removeItem('fastprint_user');
+            authToken = null;
+            currentUser = null;
+            showLogin();
         }
+    }
 
-        function clearSelection() {
-            document.getElementById('folderPath').value = '';
-            document.getElementById('selectedProduct').style.display = 'none';
-            document.getElementById('resultsSection').style.display = 'none';
-            document.getElementById('emptyState').style.display = 'block';
-            currentFiles = [];
-        }
+    async function searchProducts(query) {
+        const container = document.getElementById('searchResults');
+        if (!query || query.length < 3) { container.innerHTML = ''; return; }
 
-        async function loadPrinters() {
-            try {
-                const response = await fetch('/api/printers');
-                const data = await response.json();
-                const select = document.getElementById('printerSelect');
-                select.innerHTML = '<option value="">Impressora Padrão do Sistema</option>';
-                data.printers.forEach(printer => {
-                    const option = document.createElement('option');
-                    option.value = printer;
-                    option.textContent = printer;
-                    select.appendChild(option);
-                });
-            } catch (error) {
-                showToast('Erro ao carregar impressoras', 'error');
-            }
-        }
+        container.innerHTML = '<div class="loading"><div class="spinner"></div>Buscando...</div>';
 
-        async function scanFolder() {
-            const path = document.getElementById('folderPath').value.trim();
-            if (!path) { showToast('Digite o caminho da pasta', 'warning'); return; }
+        try {
+            const response = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+            const data = await response.json();
 
-            document.getElementById('emptyState').style.display = 'none';
-            document.getElementById('resultsSection').style.display = 'block';
-            document.getElementById('fileList').innerHTML = '<div class="loading"><div class="spinner"></div>Escaneando...</div>';
-
-            try {
-                const response = await fetch('/api/list-pdfs', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path })
-                });
-
-                if (!response.ok) throw new Error((await response.json()).detail);
-
-                const data = await response.json();
-                currentFiles = data.files.map(f => ({ ...f, selected: false }));
-                renderFiles();
-                updateCounts();
-                showToast(`${data.total} arquivos encontrados`, data.total > 0 ? 'success' : 'warning');
-            } catch (error) {
-                showToast(error.message, 'error');
-                document.getElementById('fileList').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">❌</div>
-                        <h3>Erro ao escanear</h3>
-                        <p>${error.message}</p>
-                    </div>
-                `;
-            }
-        }
-
-        function renderFiles() {
-            const container = document.getElementById('fileList');
-            if (currentFiles.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📭</div>
-                        <h3>Nenhum PDF encontrado</h3>
-                        <p>Não há PDFs nas pastas ENG</p>
-                    </div>
-                `;
+            if (data.results.length === 0) {
+                container.innerHTML = `<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">Nenhum produto encontrado</div>`;
                 return;
             }
 
-            container.innerHTML = currentFiles.map((file, i) => `
-                <div class="file-item" id="file-${i}">
-                    <input type="checkbox" class="file-checkbox" ${file.selected ? 'checked' : ''} onchange="toggleFile(${i})">
-                    <div class="file-icon">PDF</div>
-                    <div class="file-info">
-                        <div class="file-name">${file.name}</div>
-                        <div class="file-meta">
-                            <span class="folder-badge">${file.folder}</span>
-                            <span>${file.size_kb} KB</span>
-                        </div>
+            container.innerHTML = data.results.map(p => `
+                <div class="search-result-item" onclick="selectProduct('${p.path.replace(/\\/g, '\\\\')}', '${p.name}')">
+                    <div class="search-result-info">
+                        <h4>${p.name}</h4>
+                        <span>${p.path}</span>
                     </div>
-                    <div class="file-status pending" id="status-${i}">⏳</div>
+                    <div class="search-result-meta">
+                        <div class="pdf-count">${p.pdf_count} PDFs</div>
+                        <div class="status">${p.status}</div>
+                    </div>
                 </div>
             `).join('');
+        } catch (error) {
+            container.innerHTML = `<div style="padding: 1rem; color: var(--error);">Erro ao buscar</div>`;
+        }
+    }
+
+    function selectProduct(path, name) {
+        document.getElementById('folderPath').value = path;
+        document.getElementById('searchInput').value = '';
+        document.getElementById('searchResults').innerHTML = '';
+        document.getElementById('selectedProduct').style.display = 'flex';
+        document.getElementById('selectedProductName').textContent = name;
+        document.getElementById('selectedProductPath').textContent = path;
+        scanFolder();
+    }
+
+    function clearSelection() {
+        document.getElementById('folderPath').value = '';
+        document.getElementById('selectedProduct').style.display = 'none';
+        document.getElementById('resultsSection').style.display = 'none';
+        document.getElementById('emptyState').style.display = 'block';
+        currentFiles = [];
+    }
+
+    async function loadPrinters() {
+        try {
+            const response = await fetch('/api/printers');
+            const data = await response.json();
+            const select = document.getElementById('printerSelect');
+            select.innerHTML = '<option value="">Impressora Padrão do Sistema</option>';
+            data.printers.forEach(printer => {
+                const option = document.createElement('option');
+                option.value = printer;
+                option.textContent = printer;
+                select.appendChild(option);
+            });
+        } catch (error) {
+            showToast('Erro ao carregar impressoras', 'error');
+        }
+    }
+
+    async function scanFolder() {
+        const path = document.getElementById('folderPath').value.trim();
+        if (!path) { showToast('Digite o caminho da pasta', 'warning'); return; }
+
+        document.getElementById('emptyState').style.display = 'none';
+        document.getElementById('resultsSection').style.display = 'block';
+        document.getElementById('fileList').innerHTML = '<div class="loading"><div class="spinner"></div>Escaneando...</div>';
+
+        try {
+            const response = await fetch('/api/list-pdfs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+
+            if (!response.ok) throw new Error((await response.json()).detail);
+
+            const data = await response.json();
+            currentFiles = data.files.map(f => ({ ...f, selected: true }));
+            renderFiles();
+            updateCounts();
+            showToast(`${data.total} arquivos encontrados`, data.total > 0 ? 'success' : 'warning');
+        } catch (error) {
+            showToast(error.message, 'error');
+            document.getElementById('fileList').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">❌</div>
+                    <h3>Erro ao escanear</h3>
+                    <p>${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    function renderFiles() {
+        const container = document.getElementById('fileList');
+        if (currentFiles.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <h3>Nenhum PDF encontrado</h3>
+                    <p>Não há PDFs nas pastas ENG</p>
+                </div>
+            `;
+            return;
         }
 
-        function toggleFile(i) { currentFiles[i].selected = !currentFiles[i].selected; updateCounts(); }
-        function selectAll() { currentFiles.forEach(f => f.selected = true); renderFiles(); updateCounts(); }
-        function deselectAll() { currentFiles.forEach(f => f.selected = false); renderFiles(); updateCounts(); }
+        container.innerHTML = currentFiles.map((file, i) => `
+            <div class="file-item" id="file-${i}">
+                <input type="checkbox" class="file-checkbox" ${file.selected ? 'checked' : ''} onchange="toggleFile(${i})">
+                <div class="file-icon">PDF</div>
+                <div class="file-info">
+                    <div class="file-name">${file.name}</div>
+                    <div class="file-meta">
+                        <span class="folder-badge">${file.folder}</span>
+                        <span>${file.size_kb} KB</span>
+                    </div>
+                </div>
+                <div class="file-status pending" id="status-${i}">⏳</div>
+            </div>
+        `).join('');
+    }
 
-        function updateCounts() {
-            const selected = currentFiles.filter(f => f.selected).length;
-            const total = currentFiles.length;
-            document.getElementById('fileCount').textContent = `${total} PDFs`;
-            document.getElementById('totalFiles').textContent = total;
-            document.getElementById('selectedCount').textContent = selected;
+    function toggleFile(i) { currentFiles[i].selected = !currentFiles[i].selected; updateCounts(); }
+    function selectAll() { currentFiles.forEach(f => f.selected = true); renderFiles(); updateCounts(); }
+    function deselectAll() { currentFiles.forEach(f => f.selected = false); renderFiles(); updateCounts(); }
+
+    function updateCounts() {
+        const selected = currentFiles.filter(f => f.selected).length;
+        const total = currentFiles.length;
+        document.getElementById('fileCount').textContent = `${total} PDFs`;
+        document.getElementById('totalFiles').textContent = total;
+        document.getElementById('selectedCount').textContent = selected;
+        
+        const btn = document.getElementById('printBtn');
+        btn.disabled = selected === 0;
+        btn.textContent = selected === total ? '🖨️ Imprimir Todos' : `🖨️ Imprimir ${selected} Selecionados`;
+    }
+
+    async function printSelected() {
+        const selected = currentFiles.filter(f => f.selected);
+        if (selected.length === 0) { showToast('Selecione pelo menos um arquivo', 'warning'); return; }
+
+        const path = document.getElementById('folderPath').value.trim();
+        const printer = document.getElementById('printerSelect').value || null;
+        const btn = document.getElementById('printBtn');
+        
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Imprimindo...';
+        document.getElementById('progressContainer').classList.add('active');
+
+        try {
+            const response = await fetch('/api/print', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authToken}`
+                },
+                body: JSON.stringify({ folder_path: path, printer, selected_files: selected.map(f => f.path) })
+            });
+
+            const data = await response.json();
+            let idx = 0;
             
-            const btn = document.getElementById('printBtn');
-            btn.disabled = selected === 0;
-            btn.textContent = selected === total ? '🖨️ Imprimir Todos' : `🖨️ Imprimir ${selected} Selecionados`;
+            currentFiles.forEach((file, i) => {
+                if (file.selected && data.results[idx]) {
+                    const el = document.getElementById(`status-${i}`);
+                    el.className = `file-status ${data.results[idx].success ? 'success' : 'error'}`;
+                    el.textContent = data.results[idx].success ? '✓' : '✗';
+                    idx++;
+                    
+                    const pct = Math.round((idx / data.total) * 100);
+                    document.getElementById('progressFill').style.width = `${pct}%`;
+                    document.getElementById('progressPercent').textContent = `${pct}%`;
+                }
+            });
+
+            document.getElementById('progressText').textContent = 'Concluído!';
+            showToast(`${data.printed}/${data.total} arquivos impressos!`, data.printed === data.total ? 'success' : 'warning');
+        } catch (error) {
+            showToast('Erro: ' + error.message, 'error');
+        } finally {
+            btn.disabled = false;
+            updateCounts();
         }
+    }
 
-        async function printSelected() {
-            const selected = currentFiles.filter(f => f.selected);
-            if (selected.length === 0) { showToast('Selecione pelo menos um arquivo', 'warning'); return; }
-
-            const path = document.getElementById('folderPath').value.trim();
-            const printer = document.getElementById('printerSelect').value || null;
-            const btn = document.getElementById('printBtn');
-            
-            btn.disabled = true;
-            btn.innerHTML = '⏳ Imprimindo...';
-            document.getElementById('progressContainer').classList.add('active');
-
-            try {
-                const response = await fetch('/api/print', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ folder_path: path, printer, selected_files: selected.map(f => f.path) })
-                });
-
-                const data = await response.json();
-                let idx = 0;
-                
-                currentFiles.forEach((file, i) => {
-                    if (file.selected && data.results[idx]) {
-                        const el = document.getElementById(`status-${i}`);
-                        el.className = `file-status ${data.results[idx].success ? 'success' : 'error'}`;
-                        el.textContent = data.results[idx].success ? '✓' : '✗';
-                        idx++;
-                        
-                        const pct = Math.round((idx / data.total) * 100);
-                        document.getElementById('progressFill').style.width = `${pct}%`;
-                        document.getElementById('progressPercent').textContent = `${pct}%`;
-                    }
-                });
-
-                document.getElementById('progressText').textContent = 'Concluído!';
-                showToast(`${data.printed}/${data.total} arquivos impressos!`, data.printed === data.total ? 'success' : 'warning');
-            } catch (error) {
-                showToast('Erro: ' + error.message, 'error');
-            } finally {
-                btn.disabled = false;
-                updateCounts();
-            }
-        }
-
-        function showToast(msg, type = 'success') {
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.innerHTML = `<span>${{success:'✓',error:'✗',warning:'⚠'}[type]}</span> ${msg}`;
-            container.appendChild(toast);
-            setTimeout(() => { toast.style.animation = 'slideIn 0.3s ease reverse'; setTimeout(() => toast.remove(), 300); }, 4000);
-        }
+    function showToast(msg, type = 'success') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `<span>${{success:'✓',error:'✗',warning:'⚠'}[type]}</span> ${msg}`;
+        container.appendChild(toast);
+        setTimeout(() => { toast.style.animation = 'slideIn 0.3s ease reverse'; setTimeout(() => toast.remove(), 300); }, 4000);
+    }
     </script>
 </body>
 </html>

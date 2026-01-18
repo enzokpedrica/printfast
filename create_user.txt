@@ -1,0 +1,4 @@
+python -c "from database import criar_usuario; criar_usuario('Enzo Pedrica', 'enzo.pedrica', 'sua_senha')"
+
+http://localhost:8000/api/usuarios → lista usuários
+http://localhost:8000/api/logs → lista logs

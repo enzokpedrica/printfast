@@ -3,7 +3,7 @@ Sistema de Impressão em Lote - Linea Brasil
 Fase 1: Script local com interface web
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
@@ -12,6 +12,12 @@ import subprocess
 import platform
 import os
 from typing import Optional
+from datetime import datetime, timedelta
+import jwt
+from database import verificar_login, registrar_log, criar_usuario, listar_usuarios, listar_logs
+
+# Chave secreta para JWT (troque por algo único)
+SECRET_KEY = "fastprint-linea-2025-sua-chave-secreta"
 
 app = FastAPI(title="FastPrint - Linea Brasil")
 
@@ -40,6 +46,15 @@ class PrintRequest(BaseModel):
     
 class FolderRequest(BaseModel):
     path: str
+
+class LoginRequest(BaseModel):
+    usuario: str
+    senha: str
+
+class NovoUsuarioRequest(BaseModel):
+    nome: str
+    usuario: str
+    senha: str    
 
 # ============================================
 # FUNÇÕES AUXILIARES
@@ -215,6 +230,55 @@ def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
 # ROTAS DA API
 # ============================================
 
+# ============================================
+# AUTENTICAÇÃO
+
+
+@app.post("/api/login")
+async def login(request: LoginRequest):
+    """Faz login e retorna token JWT"""
+    user = verificar_login(request.usuario, request.senha)
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuário ou senha inválidos")
+    
+    # Gera token JWT válido por 8 horas
+    token = jwt.encode(
+        {"user_id": user["id"], "usuario": user["usuario"], "nome": user["nome"], 
+         "exp": datetime.utcnow() + timedelta(hours=8)},
+        SECRET_KEY,
+        algorithm="HS256"
+    )
+    return {"success": True, "token": token, "user": user}
+
+@app.get("/api/verificar-token")
+async def verificar_token(token: str):
+    """Verifica se o token é válido"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return {"valid": True, "user": payload}
+    except jwt.ExpiredSignatureError:
+        return {"valid": False, "error": "Token expirado"}
+    except jwt.InvalidTokenError:
+        return {"valid": False, "error": "Token inválido"}
+
+@app.post("/api/usuarios")
+async def criar_novo_usuario(request: NovoUsuarioRequest):
+    """Cria um novo usuário (admin)"""
+    if criar_usuario(request.nome, request.usuario, request.senha):
+        return {"success": True, "message": f"Usuário {request.usuario} criado"}
+    raise HTTPException(status_code=400, detail="Usuário já existe")
+
+@app.get("/api/usuarios")
+async def get_usuarios():
+    """Lista todos os usuários"""
+    return {"usuarios": listar_usuarios()}
+
+@app.get("/api/logs")
+async def get_logs(limite: int = 100):
+    """Lista os logs de impressão"""
+    return {"logs": listar_logs(limite)}
+# ============================================    
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """Serve a página principal"""
@@ -246,7 +310,7 @@ async def list_pdfs(request: FolderRequest):
 
 
 @app.post("/api/print")
-async def print_files(request: PrintRequest):
+async def print_files(request: PrintRequest, authorization: str = Header(default=None)):
     """Imprime PDFs selecionados ou todos de uma pasta"""
     try:
         # Se tem arquivos selecionados, usa eles
@@ -254,25 +318,16 @@ async def print_files(request: PrintRequest):
             pdfs = [{"path": f, "name": Path(f).name} for f in request.selected_files]
         else:
             pdfs = find_pdf_files(request.folder_path)
-
-        pdfs = []
-        for f in request.selected_files:
-            path = Path(f)
-            if path.exists() and path.suffix.lower() == ".pdf":
-                pdfs.append({
-                    "path": str(path),
-                    "name": path.name
-                })
-
+        
         if not pdfs:
             return {
                 "success": False,
-                "message": "Nenhum PDF válido encontrado na seleção"
+                "message": "Nenhum PDF para imprimir"
             }
-
+        
         results = []
         success_count = 0
-
+        
         for pdf in pdfs:
             result = print_pdf(pdf["path"], request.printer)
             results.append({
@@ -281,7 +336,24 @@ async def print_files(request: PrintRequest):
             })
             if result["success"]:
                 success_count += 1
-
+        
+        # Registra no log se tiver token válido
+        if authorization and authorization.startswith("Bearer "):
+            try:
+                token = authorization.split(" ")[1]
+                payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+                produto = Path(request.folder_path).name
+                arquivos = [pdf["name"] for pdf in pdfs if any(r["file"] == pdf["name"] and r.get("success") for r in results)]
+                registrar_log(
+                    usuario_id=payload["user_id"],
+                    produto=produto,
+                    pasta=request.folder_path,
+                    arquivos=arquivos,
+                    impressora=request.printer or "Padrão"
+                )
+            except:
+                pass  # Se falhar o log, não impede a impressão
+        
         return {
             "success": success_count > 0,
             "total": len(pdfs),
@@ -289,7 +361,9 @@ async def print_files(request: PrintRequest):
             "failed": len(pdfs) - success_count,
             "results": results
         }
-
+        
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
