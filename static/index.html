@@ -623,6 +623,12 @@
     });
 
     function checkAuth() {
+        // Login desativado temporariamente
+        currentUser = { id: 1, nome: 'Usuário Teste', usuario: 'teste' };
+        authToken = 'temp';
+        showApp();
+        
+        /*
         authToken = localStorage.getItem('fastprint_token');
         const userStr = localStorage.getItem('fastprint_user');
         
@@ -632,6 +638,7 @@
         } else {
             showLogin();
         }
+        */
     }
 
     function showLogin() {
