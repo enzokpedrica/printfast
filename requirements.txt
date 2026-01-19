@@ -1,9 +1,8 @@
-# PrintHub - Dependências
+# FastPrint - Dependências
 # Instalar com: pip install -r requirements.txt
 
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 python-multipart>=0.0.6
-
-# Para Windows (impressão)
-# pip install pywin32
+werkzeug>=3.0.0
+pyjwt>=2.8.0
