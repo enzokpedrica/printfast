@@ -78,7 +78,7 @@ Para permitir que outros acessem:
 
 3. **Outros acessam via:**
    ```
-   http://192.168.1.50:8000
+   http://IP:8000
    ```
 
 ---
@@ -112,16 +112,5 @@ Para permitir que outros acessem:
 │   └── arquivo.pdf   ❌ Ignorado (não começa com ENG)
 └── readme.txt        ❌ Ignorado (não é PDF)
 ```
-
----
-
-## 🚧 Roadmap
-
-- [x] Fase 1: Interface web local
-- [x] Fase 2: Login e controle de acesso
-- [x] Fase 3: Histórico de impressões
-- [ ] Fase 4: Integração com ciclo de vida do produto
-
----
 
 Desenvolvido para Linea Brasil 🏭
