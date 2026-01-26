@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FastPrint - Linea Brasil</title>
+    <title>Printer - Linea Brasil</title>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -480,6 +480,93 @@
             font-weight: 600;
             color: white;
         }
+        /* Modal de Confirmação */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+
+        .modal-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 450px;
+            transform: scale(0.9);
+            transition: transform 0.3s;
+        }
+
+        .modal-overlay.show .modal-box {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-header h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .modal-content {
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .modal-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-item:last-child {
+            border-bottom: none;
+        }
+
+        .modal-item-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .modal-item-value {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        .modal-actions .btn {
+            min-width: 120px;
+            justify-content: center;
+        }
     </style>
 </head>
 <body>
@@ -489,7 +576,7 @@
             <div class="logo">
                 <div class="logo-icon">🖨️</div>
                 <div class="logo-text">
-                    <h1>FastPrint</h1>
+                    <h1>Printer</h1>
                     <span>Linea Brasil</span>
                 </div>
             </div>
@@ -515,7 +602,7 @@
             <div class="logo">
                 <div class="logo-icon">🖨️</div>
                 <div class="logo-text">
-                    <h1>FastPrint</h1>
+                    <h1>printer</h1>
                     <span>Linea Brasil</span>
                 </div>
             </div>
@@ -608,6 +695,34 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- Modal de Confirmação -->
+    <div class="modal-overlay" id="confirmModal">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span style="font-size: 1.5rem;">🖨️</span>
+                <h3>Confirmar Impressão</h3>
+            </div>
+            <div class="modal-content">
+                <div class="modal-item">
+                    <span class="modal-item-label">📦 Produto</span>
+                    <span class="modal-item-value" id="modalProduto">-</span>
+                </div>
+                <div class="modal-item">
+                    <span class="modal-item-label">🖨️ Impressora</span>
+                    <span class="modal-item-value" id="modalImpressora">-</span>
+                </div>
+                <div class="modal-item">
+                    <span class="modal-item-label">📄 Arquivos</span>
+                    <span class="modal-item-value" id="modalArquivos">-</span>
+                </div>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="closeModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="confirmPrint()">Confirmar</button>
+            </div>
+        </div>
     </div>
 
     <div class="toast-container" id="toastContainer"></div>
@@ -865,8 +980,34 @@
 
     async function printSelected() {
         const selected = currentFiles.filter(f => f.selected);
-        if (selected.length === 0) { showToast('Selecione pelo menos um arquivo', 'warning'); return; }
+        if (selected.length === 0) { 
+            showToast('Selecione pelo menos um arquivo', 'warning'); 
+            return; 
+        }
 
+        // Pega informações para o modal
+        const path = document.getElementById('folderPath').value.trim();
+        const produto = path.split('\\').pop() || path.split('/').pop() || 'Produto';
+        const printer = document.getElementById('printerSelect');
+        const impressora = printer.options[printer.selectedIndex].text || 'Padrão do Sistema';
+        
+        // Preenche o modal
+        document.getElementById('modalProduto').textContent = produto;
+        document.getElementById('modalImpressora').textContent = impressora;
+        document.getElementById('modalArquivos').textContent = `${selected.length} arquivo(s)`;
+        
+        // Mostra o modal
+        document.getElementById('confirmModal').classList.add('show');
+    }
+
+    function closeModal() {
+        document.getElementById('confirmModal').classList.remove('show');
+    }
+
+    async function confirmPrint() {
+        closeModal();
+        
+        const selected = currentFiles.filter(f => f.selected);
         const path = document.getElementById('folderPath').value.trim();
         const printer = document.getElementById('printerSelect').value || null;
         const btn = document.getElementById('printBtn');
@@ -909,7 +1050,7 @@
             btn.disabled = false;
             updateCounts();
         }
-    }
+}
 
     function showToast(msg, type = 'success') {
         const container = document.getElementById('toastContainer');

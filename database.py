@@ -1,5 +1,5 @@
 """
-FastPrint - Banco de Dados
+Banco de Dados
 Gerencia usuários e logs de impressão
 """
 

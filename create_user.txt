@@ -2,3 +2,8 @@ python -c "from database import criar_usuario; criar_usuario('Enzo Pedrica', 'en
 
 http://localhost:8000/api/usuarios → lista usuários
 http://localhost:8000/api/logs → lista logs
+
+python -c "from database import listar_logs; print(listar_logs())"
+
+// Criar Usuario
+python -c "from database import listar_usuarios; print(listar_usuarios())"

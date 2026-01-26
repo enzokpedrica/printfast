@@ -16,6 +16,19 @@ from datetime import datetime, timedelta
 import jwt
 from database import verificar_login, registrar_log, criar_usuario, listar_usuarios, listar_logs
 
+# ============================================
+# FILTROS - AJUSTE CONFORME NECESSÁRIO
+# ============================================
+
+# Ignorar PDFs com esses termos no nome (case insensitive)
+IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0", 
+                "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V1", 
+                "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V2"]
+
+# Ignorar essas pastas (case insensitive)
+IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM"]
+
+
 # Chave secreta para JWT (troque por algo único)
 SECRET_KEY = "fastprint-linea-2025-sua-chave-secreta"
 
@@ -26,7 +39,6 @@ app = FastAPI(title="FastPrint - Linea Brasil")
 # ============================================
 
 # Caminho base onde ficam os produtos
-# Caminhos onde buscar produtos
 SEARCH_PATHS = [
     r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\1 - EM LINHA",
     r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
@@ -107,6 +119,7 @@ def find_pdf_files(folder_path: str) -> list[dict]:
     Encontra todos os PDFs em subpastas que começam com 'ENG'
     Suporta formato: ENG - 002 - FURACAO, ENG-DESENHOS, etc.
     Também busca recursivamente em subpastas de ENG
+    Aplica filtros de IGNORAR_PDFS e IGNORAR_PASTAS
     """
     path = Path(folder_path)
     
@@ -122,10 +135,24 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                 upper_name.startswith("ENG-") or 
                 upper_name == "ENG")
     
+    def should_ignore_folder(name: str) -> bool:
+        """Verifica se a pasta deve ser ignorada"""
+        upper_name = name.upper()
+        return any(termo in upper_name for termo in IGNORAR_PASTAS)
+    
+    def should_ignore_pdf(name: str) -> bool:
+        """Verifica se o PDF deve ser ignorado"""
+        upper_name = name.upper()
+        return any(termo in upper_name for termo in IGNORAR_PDFS)
+    
     def scan_folder(folder: Path, parent_name: str = ""):
         """Escaneia pasta e subpastas recursivamente"""
         for item in folder.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
+                # Ignora PDFs com termos específicos
+                if should_ignore_pdf(item.name):
+                    continue
+                    
                 display_folder = parent_name or folder.name
                 pdf_files.append({
                     "name": item.name,
@@ -133,25 +160,26 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                     "folder": display_folder,
                     "size_kb": round(item.stat().st_size / 1024, 1)
                 })
-            elif item.is_dir() and item.name.upper() != "REVISAO":
-                # Busca recursiva em subpastas (exceto REVISAO)
+            elif item.is_dir() and not should_ignore_folder(item.name):
+                # Busca recursiva em subpastas (exceto ignoradas)
                 scan_folder(item, parent_name or folder.name)
     
     # Procura em subpastas que começam com "ENG"
     for subdir in path.iterdir():
-        if subdir.is_dir() and is_eng_folder(subdir.name):
+        if subdir.is_dir() and is_eng_folder(subdir.name) and not should_ignore_folder(subdir.name):
             scan_folder(subdir)
     
     # Se a própria pasta passada for uma pasta ENG, busca PDFs diretamente nela
     if is_eng_folder(path.name):
         for item in path.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
-                pdf_files.append({
-                    "name": item.name,
-                    "path": str(item),
-                    "folder": path.name,
-                    "size_kb": round(item.stat().st_size / 1024, 1)
-                })
+                if not should_ignore_pdf(item.name):
+                    pdf_files.append({
+                        "name": item.name,
+                        "path": str(item),
+                        "folder": path.name,
+                        "size_kb": round(item.stat().st_size / 1024, 1)
+                    })
     
     return sorted(pdf_files, key=lambda x: (x["folder"], x["name"]))
 
@@ -337,11 +365,16 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
             if result["success"]:
                 success_count += 1
         
-        # Registra no log se tiver token válido
+        # Registra no log
         if authorization and authorization.startswith("Bearer "):
             try:
                 token = authorization.split(" ")[1]
-                payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+                
+                # Se for token temporário (login desativado), usa usuário padrão
+                if token == "temp":
+                    payload = {"user_id": 1, "usuario": "teste", "nome": "Usuário Teste"}
+                else:
+                    payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
                 produto = Path(request.folder_path).name
                 arquivos = [pdf["name"] for pdf in pdfs if any(r["file"] == pdf["name"] and r.get("success") for r in results)]
                 registrar_log(
@@ -481,7 +514,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "="*50)
-    print("🖨️  FastPrint - Linea Brasil")
+    print("🖨️  Printer - Linea Brasil")
     print("="*50)
     print(f"🌐 Acesse: http://localhost:8000")
     print(f"\n💡 Para a equipe acessar, use seu IP local:")
