@@ -1,6 +1,6 @@
 """
 Banco de Dados
-Gerencia usuários e logs de impressão
+Gerencia usuários, logs de impressão e rastreio de documentos
 """
 
 import sqlite3
@@ -33,7 +33,7 @@ def init_db():
         )
     """)
     
-    # Tabela de logs
+    # Tabela de logs (mantida para compatibilidade)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -47,12 +47,46 @@ def init_db():
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
         )
     """)
+
+    # Tabela de documentos impressos (rastreio)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS documentos_impressos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            codigo_rastreio TEXT UNIQUE NOT NULL,
+            produto TEXT NOT NULL,
+            arquivo TEXT NOT NULL,
+            pasta TEXT,
+            impressora TEXT,
+            computador TEXT,
+            status TEXT DEFAULT 'entregue',
+            impresso_por_id INTEGER NOT NULL,
+            impresso_em TEXT DEFAULT CURRENT_TIMESTAMP,
+            recolhido_por_id INTEGER,
+            recolhido_em TEXT,
+            baixado_por_id INTEGER,
+            baixado_em TEXT,
+            FOREIGN KEY (impresso_por_id) REFERENCES usuarios(id),
+            FOREIGN KEY (recolhido_por_id) REFERENCES usuarios(id),
+            FOREIGN KEY (baixado_por_id) REFERENCES usuarios(id)
+        )
+    """)
+
+    # Contador diário para código de rastreio
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS contador_rastreio (
+            data TEXT PRIMARY KEY,
+            contador INTEGER DEFAULT 0
+        )
+    """)
     
     conn.commit()
     conn.close()
 
+# ============================================
+# USUÁRIOS
+# ============================================
+
 def criar_usuario(nome: str, usuario: str, senha: str) -> bool:
-    """Cria um novo usuário"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -65,10 +99,9 @@ def criar_usuario(nome: str, usuario: str, senha: str) -> bool:
         conn.close()
         return True
     except sqlite3.IntegrityError:
-        return False  # Usuário já existe
+        return False
 
 def verificar_login(usuario: str, senha: str) -> dict | None:
-    """Verifica login e retorna dados do usuário ou None"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -82,8 +115,33 @@ def verificar_login(usuario: str, senha: str) -> dict | None:
         return {"id": row["id"], "nome": row["nome"], "usuario": row["usuario"]}
     return None
 
+def listar_usuarios():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, nome, usuario, ativo, criado_em FROM usuarios")
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def desativar_usuario(usuario_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE usuarios SET ativo = 0 WHERE id = ?", (usuario_id,))
+    conn.commit()
+    conn.close()
+
+def ativar_usuario(usuario_id: int):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE usuarios SET ativo = 1 WHERE id = ?", (usuario_id,))
+    conn.commit()
+    conn.close()
+
+# ============================================
+# LOGS (compatibilidade)
+# ============================================
+
 def registrar_log(usuario_id: int, produto: str, pasta: str, arquivos: list, impressora: str):
-    """Registra uma impressão no log"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -94,17 +152,7 @@ def registrar_log(usuario_id: int, produto: str, pasta: str, arquivos: list, imp
     conn.commit()
     conn.close()
 
-def listar_usuarios():
-    """Lista todos os usuários"""
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, nome, usuario, ativo, criado_em FROM usuarios")
-    rows = cursor.fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
-
 def listar_logs(limite: int = 100):
-    """Lista os últimos logs"""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -118,21 +166,117 @@ def listar_logs(limite: int = 100):
     conn.close()
     return [dict(row) for row in rows]
 
-def desativar_usuario(usuario_id: int):
-    """Desativa um usuário"""
+# ============================================
+# RASTREIO DE DOCUMENTOS
+# ============================================
+
+def gerar_codigo_rastreio(computador: str) -> str:
+    """Gera código único: FP-AAAAMMDD-SEQ-PC"""
+    hoje = datetime.now().strftime("%Y%m%d")
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE usuarios SET ativo = 0 WHERE id = ?", (usuario_id,))
+    
+    cursor.execute("INSERT OR IGNORE INTO contador_rastreio (data, contador) VALUES (?, 0)", (hoje,))
+    cursor.execute("UPDATE contador_rastreio SET contador = contador + 1 WHERE data = ?", (hoje,))
+    cursor.execute("SELECT contador FROM contador_rastreio WHERE data = ?", (hoje,))
+    seq = cursor.fetchone()["contador"]
+    conn.commit()
+    conn.close()
+    
+    # Limita e limpa o nome do computador
+    pc = "".join(c for c in computador.upper() if c.isalnum())[:8]
+    return f"FP-{hoje}-{seq:04d}-{pc}"
+
+def registrar_documento_impresso(
+    codigo_rastreio: str,
+    produto: str,
+    arquivo: str,
+    pasta: str,
+    impressora: str,
+    computador: str,
+    usuario_id: int
+):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO documentos_impressos 
+        (codigo_rastreio, produto, arquivo, pasta, impressora, computador, impresso_por_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (codigo_rastreio, produto, arquivo, pasta, impressora, computador, usuario_id))
     conn.commit()
     conn.close()
 
-def ativar_usuario(usuario_id: int):
-    """Ativa um usuário"""
+def listar_documentos(status: str = None, limite: int = 200):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE usuarios SET ativo = 1 WHERE id = ?", (usuario_id,))
+    
+    query = """
+        SELECT 
+            d.*,
+            u1.nome as impresso_por_nome,
+            u2.nome as recolhido_por_nome,
+            u3.nome as baixado_por_nome
+        FROM documentos_impressos d
+        JOIN usuarios u1 ON d.impresso_por_id = u1.id
+        LEFT JOIN usuarios u2 ON d.recolhido_por_id = u2.id
+        LEFT JOIN usuarios u3 ON d.baixado_por_id = u3.id
+    """
+    
+    if status:
+        query += " WHERE d.status = ?"
+        cursor.execute(query + " ORDER BY d.impresso_em DESC LIMIT ?", (status, limite))
+    else:
+        cursor.execute(query + " ORDER BY d.impresso_em DESC LIMIT ?", (limite,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def atualizar_status_documento(codigo_rastreio: str, novo_status: str, usuario_id: int) -> bool:
+    """Atualiza status: recolhido ou baixado"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    agora = datetime.now().isoformat()
+    
+    if novo_status == "recolhido":
+        cursor.execute("""
+            UPDATE documentos_impressos 
+            SET status = 'recolhido', recolhido_por_id = ?, recolhido_em = ?
+            WHERE codigo_rastreio = ? AND status = 'entregue'
+        """, (usuario_id, agora, codigo_rastreio))
+    elif novo_status == "baixado":
+        cursor.execute("""
+            UPDATE documentos_impressos 
+            SET status = 'baixado', baixado_por_id = ?, baixado_em = ?
+            WHERE codigo_rastreio = ? AND status = 'recolhido'
+        """, (usuario_id, agora, codigo_rastreio))
+    else:
+        conn.close()
+        return False
+    
+    affected = cursor.rowcount
     conn.commit()
     conn.close()
+    return affected > 0
+
+def buscar_documento(codigo_rastreio: str) -> dict | None:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT 
+            d.*,
+            u1.nome as impresso_por_nome,
+            u2.nome as recolhido_por_nome,
+            u3.nome as baixado_por_nome
+        FROM documentos_impressos d
+        JOIN usuarios u1 ON d.impresso_por_id = u1.id
+        LEFT JOIN usuarios u2 ON d.recolhido_por_id = u2.id
+        LEFT JOIN usuarios u3 ON d.baixado_por_id = u3.id
+        WHERE d.codigo_rastreio = ?
+    """, (codigo_rastreio,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 # Inicializa o banco quando o módulo é importado
 init_db()

@@ -11,40 +11,40 @@ from pathlib import Path
 import subprocess
 import platform
 import os
+import socket
+import tempfile
 from typing import Optional
 from datetime import datetime, timedelta
 import jwt
-from database import verificar_login, registrar_log, criar_usuario, listar_usuarios, listar_logs
+from database import (
+    verificar_login, registrar_log, criar_usuario, listar_usuarios, listar_logs,
+    gerar_codigo_rastreio, registrar_documento_impresso,
+    listar_documentos, atualizar_status_documento, buscar_documento
+)
 
 # ============================================
 # FILTROS - AJUSTE CONFORME NECESSÁRIO
 # ============================================
 
-# Ignorar PDFs com esses termos no nome (case insensitive)
 IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0", 
                 "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V1", 
                 "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V2"]
 
-# Ignorar essas pastas (case insensitive)
 IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM"]
 
-
-# Chave secreta para JWT (troque por algo único)
 SECRET_KEY = "fastprint-linea-2025-sua-chave-secreta"
 
 app = FastAPI(title="FastPrint - Linea Brasil")
 
 # ============================================
-# CONFIGURAÇÕES - AJUSTE CONFORME NECESSÁRIO
+# CONFIGURAÇÕES
 # ============================================
 
-# Caminho base onde ficam os produtos
 SEARCH_PATHS = [
     r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\1 - EM LINHA",
     r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
 ]
 
-# Impressora padrão (deixe None para usar a padrão do sistema)
 DEFAULT_PRINTER: Optional[str] = None
 
 # ============================================
@@ -54,7 +54,7 @@ DEFAULT_PRINTER: Optional[str] = None
 class PrintRequest(BaseModel):
     folder_path: str
     printer: Optional[str] = None
-    selected_files: Optional[list[str]] = None  # Lista de caminhos específicos para imprimir
+    selected_files: Optional[list[str]] = None
     
 class FolderRequest(BaseModel):
     path: str
@@ -66,41 +66,41 @@ class LoginRequest(BaseModel):
 class NovoUsuarioRequest(BaseModel):
     nome: str
     usuario: str
-    senha: str    
+    senha: str
+
+class StatusUpdateRequest(BaseModel):
+    codigo_rastreio: str
+    novo_status: str  # "recolhido" ou "baixado"
 
 # ============================================
 # FUNÇÕES AUXILIARES
 # ============================================
 
+def get_hostname() -> str:
+    """Retorna o nome do computador"""
+    try:
+        return socket.gethostname()
+    except:
+        return "DESCONHECIDO"
+
 def get_available_printers() -> list[str]:
-    """Lista impressoras disponíveis no sistema"""
     system = platform.system()
     
     if system == "Windows":
         try:
-            # Usa PowerShell para listar impressoras
             result = subprocess.run(
                 ["powershell", "-Command", "Get-Printer | Select-Object -ExpandProperty Name"],
-                capture_output=True,
-                text=True,
-                timeout=10
+                capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
-                printers = [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
-                return printers
+                return [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
         except Exception as e:
             print(f"Erro ao listar impressoras: {e}")
     
     elif system == "Linux":
         try:
-            result = subprocess.run(
-                ["lpstat", "-p"],
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
+            result = subprocess.run(["lpstat", "-p"], capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
-                # Parse output: "printer PrinterName is idle..."
                 printers = []
                 for line in result.stdout.split('\n'):
                     if line.startswith('printer '):
@@ -115,12 +115,6 @@ def get_available_printers() -> list[str]:
 
 
 def find_pdf_files(folder_path: str) -> list[dict]:
-    """
-    Encontra todos os PDFs em subpastas que começam com 'ENG'
-    Suporta formato: ENG - 002 - FURACAO, ENG-DESENHOS, etc.
-    Também busca recursivamente em subpastas de ENG
-    Aplica filtros de IGNORAR_PDFS e IGNORAR_PASTAS
-    """
     path = Path(folder_path)
     
     if not path.exists():
@@ -129,30 +123,24 @@ def find_pdf_files(folder_path: str) -> list[dict]:
     pdf_files = []
     
     def is_eng_folder(name: str) -> bool:
-        """Verifica se a pasta começa com ENG (vários formatos)"""
         upper_name = name.upper()
         return (upper_name.startswith("ENG -") or 
                 upper_name.startswith("ENG-") or 
                 upper_name == "ENG")
     
     def should_ignore_folder(name: str) -> bool:
-        """Verifica se a pasta deve ser ignorada"""
         upper_name = name.upper()
         return any(termo in upper_name for termo in IGNORAR_PASTAS)
     
     def should_ignore_pdf(name: str) -> bool:
-        """Verifica se o PDF deve ser ignorado"""
         upper_name = name.upper()
         return any(termo in upper_name for termo in IGNORAR_PDFS)
     
     def scan_folder(folder: Path, parent_name: str = ""):
-        """Escaneia pasta e subpastas recursivamente"""
         for item in folder.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
-                # Ignora PDFs com termos específicos
                 if should_ignore_pdf(item.name):
                     continue
-                    
                 display_folder = parent_name or folder.name
                 pdf_files.append({
                     "name": item.name,
@@ -161,15 +149,12 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                     "size_kb": round(item.stat().st_size / 1024, 1)
                 })
             elif item.is_dir() and not should_ignore_folder(item.name):
-                # Busca recursiva em subpastas (exceto ignoradas)
                 scan_folder(item, parent_name or folder.name)
     
-    # Procura em subpastas que começam com "ENG"
     for subdir in path.iterdir():
         if subdir.is_dir() and is_eng_folder(subdir.name) and not should_ignore_folder(subdir.name):
             scan_folder(subdir)
     
-    # Se a própria pasta passada for uma pasta ENG, busca PDFs diretamente nela
     if is_eng_folder(path.name):
         for item in path.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
@@ -184,22 +169,134 @@ def find_pdf_files(folder_path: str) -> list[dict]:
     return sorted(pdf_files, key=lambda x: (x["folder"], x["name"]))
 
 
+def stamp_pdf(pdf_path: str, codigo_rastreio: str) -> str | None:
+    """
+    Adiciona carimbo de rastreio no topo do PDF.
+    Lê o tamanho e rotação reais de cada página para posicionar corretamente.
+    Requer pypdf e reportlab instalados.
+    """
+    try:
+        from pypdf import PdfReader, PdfWriter
+        from reportlab.pdfgen import canvas
+        import io
+
+        reader = PdfReader(pdf_path)
+        writer = PdfWriter()
+        texto = f"FastPrint  |  {codigo_rastreio}  |  {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  {get_hostname()}"
+
+        for page in reader.pages:
+            # Lê dimensões reais da página
+            w = float(page.mediabox.width)
+            h = float(page.mediabox.height)
+
+            # Lê rotação da página (0, 90, 180, 270)
+            rotation = int(page.get("/Rotate") or 0)
+
+            # Se a página tem rotação 90 ou 270, largura e altura são invertidas visualmente
+            if rotation in (90, 270):
+                w, h = h, w
+
+            # Cria carimbo com o tamanho exato desta página
+            packet = io.BytesIO()
+            c = canvas.Canvas(packet, pagesize=(w, h))
+
+            c.setStrokeColorRGB(0.75, 0.75, 0.75)
+            c.setLineWidth(0.4)
+            c.line(20, h - 18, w - 20, h - 18)
+
+            c.saveState()
+            c.setFont("Helvetica", 7)
+            c.setFillColorRGB(0.5, 0.5, 0.5)
+            c.translate(20, h - 13)
+            c.drawString(0, 0, texto)
+            c.restoreState()
+
+            c.save()
+            packet.seek(0)
+
+            stamp_page = PdfReader(packet).pages[0]
+
+            # Se a página tem rotação, precisamos aplicar o carimbo antes de rotacionar
+            # para o merge ficar no sistema de coordenadas correto
+            if rotation != 0:
+                # Remove a rotação temporariamente, faz o merge, reaplica
+                page["/Rotate"] = 0
+                # Recria o carimbo sem inverter w/h (coordenadas internas reais)
+                w_real = float(page.mediabox.width)
+                h_real = float(page.mediabox.height)
+                packet2 = io.BytesIO()
+                c2 = canvas.Canvas(packet2, pagesize=(w_real, h_real))
+
+                if rotation == 90:
+                    # Topo visual = lado direito interno
+                    c2.setStrokeColorRGB(0.75, 0.75, 0.75)
+                    c2.setLineWidth(0.4)
+                    c2.line(w_real - 18, 20, w_real - 18, h_real - 20)
+                    c2.saveState()
+                    c2.setFont("Helvetica", 7)
+                    c2.setFillColorRGB(0.5, 0.5, 0.5)
+                    c2.translate(w_real - 13, h_real - 20)
+                    c2.rotate(270)
+                    c2.drawString(0, 0, texto)
+                    c2.restoreState()
+                elif rotation == 270:
+                    # Topo visual = lado esquerdo interno
+                    c2.setStrokeColorRGB(0.75, 0.75, 0.75)
+                    c2.setLineWidth(0.4)
+                    c2.line(18, 20, 18, h_real - 20)
+                    c2.saveState()
+                    c2.setFont("Helvetica", 7)
+                    c2.setFillColorRGB(0.5, 0.5, 0.5)
+                    c2.translate(13, 20)
+                    c2.rotate(90)
+                    c2.drawString(0, 0, texto)
+                    c2.restoreState()
+                elif rotation == 180:
+                    # Topo visual = rodapé interno
+                    c2.setStrokeColorRGB(0.75, 0.75, 0.75)
+                    c2.setLineWidth(0.4)
+                    c2.line(20, 18, w_real - 20, 18)
+                    c2.saveState()
+                    c2.setFont("Helvetica", 7)
+                    c2.setFillColorRGB(0.5, 0.5, 0.5)
+                    c2.translate(20, 13)
+                    c2.drawString(0, 0, texto)
+                    c2.restoreState()
+
+                c2.save()
+                packet2.seek(0)
+                stamp_page = PdfReader(packet2).pages[0]
+                page.merge_page(stamp_page)
+                page["/Rotate"] = rotation  # reaplica a rotação original
+            else:
+                page.merge_page(stamp_page)
+
+            writer.add_page(page)
+
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", prefix=f"fp_{codigo_rastreio}_")
+        with open(tmp.name, "wb") as f:
+            writer.write(f)
+
+        return tmp.name
+
+    except ImportError:
+        print("AVISO: pypdf ou reportlab não instalado. Imprimindo sem carimbo.")
+        return None
+    except Exception as e:
+        print(f"Erro ao carimbar PDF: {e}")
+        return None
+
+
 def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
-    """
-    Envia um PDF para impressão usando SumatraPDF
-    Retorna status da operação
-    """
-    
     if not Path(pdf_path).exists():
         return {"success": False, "error": f"Arquivo não encontrado: {pdf_path}"}
     
-    # Possíveis caminhos do SumatraPDF
     sumatra_paths = [
-        os.path.expandvars(r"%LOCALAPPDATA%\SumatraPDF\SumatraPDF.exe"),  # Caminho mais comum
+        os.path.expandvars(r"%LOCALAPPDATA%\SumatraPDF\SumatraPDF.exe"),
         r"C:\Users\{}\AppData\Local\SumatraPDF\SumatraPDF.exe".format(os.environ.get('USERNAME', '')),
         r"C:\Program Files\SumatraPDF\SumatraPDF.exe",
         r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
-        "SumatraPDF.exe",  # Se estiver no PATH
+        "SumatraPDF.exe",
     ]
     
     sumatra_exe = None
@@ -209,14 +306,8 @@ def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
             break
     
     if not sumatra_exe:
-        # Tenta encontrar via where
         try:
-            result = subprocess.run(
-                ["where", "SumatraPDF.exe"],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
+            result = subprocess.run(["where", "SumatraPDF.exe"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 sumatra_exe = result.stdout.strip().split('\n')[0]
         except:
@@ -226,22 +317,12 @@ def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
         return {"success": False, "error": "SumatraPDF não encontrado. Instale ou adicione ao PATH."}
     
     try:
-        # Monta o comando do SumatraPDF
-        # -print-to "printer" = imprime na impressora especificada
-        # -print-to-default = imprime na impressora padrão
-        # -silent = não abre janela
-        
         if printer:
             cmd = [sumatra_exe, "-print-to", printer, "-silent", pdf_path]
         else:
             cmd = [sumatra_exe, "-print-to-default", "-silent", pdf_path]
         
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=60
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         
         if result.returncode == 0:
             return {"success": True, "message": f"Enviado para impressão: {Path(pdf_path).name}"}
@@ -258,29 +339,23 @@ def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
 # ROTAS DA API
 # ============================================
 
-# ============================================
-# AUTENTICAÇÃO
-
+# --- AUTENTICAÇÃO ---
 
 @app.post("/api/login")
 async def login(request: LoginRequest):
-    """Faz login e retorna token JWT"""
     user = verificar_login(request.usuario, request.senha)
     if not user:
         raise HTTPException(status_code=401, detail="Usuário ou senha inválidos")
     
-    # Gera token JWT válido por 8 horas
     token = jwt.encode(
         {"user_id": user["id"], "usuario": user["usuario"], "nome": user["nome"], 
          "exp": datetime.utcnow() + timedelta(hours=8)},
-        SECRET_KEY,
-        algorithm="HS256"
+        SECRET_KEY, algorithm="HS256"
     )
     return {"success": True, "token": token, "user": user}
 
 @app.get("/api/verificar-token")
 async def verificar_token(token: str):
-    """Verifica se o token é válido"""
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
         return {"valid": True, "user": payload}
@@ -291,115 +366,181 @@ async def verificar_token(token: str):
 
 @app.post("/api/usuarios")
 async def criar_novo_usuario(request: NovoUsuarioRequest):
-    """Cria um novo usuário (admin)"""
     if criar_usuario(request.nome, request.usuario, request.senha):
         return {"success": True, "message": f"Usuário {request.usuario} criado"}
     raise HTTPException(status_code=400, detail="Usuário já existe")
 
 @app.get("/api/usuarios")
 async def get_usuarios():
-    """Lista todos os usuários"""
     return {"usuarios": listar_usuarios()}
 
 @app.get("/api/logs")
 async def get_logs(limite: int = 100):
-    """Lista os logs de impressão"""
     return {"logs": listar_logs(limite)}
-# ============================================    
+
+# --- RASTREIO ---
+
+@app.get("/api/documentos")
+async def get_documentos(status: str = None, limite: int = 200):
+    """Lista documentos impressos com filtro opcional de status"""
+    docs = listar_documentos(status=status, limite=limite)
+    return {"documentos": docs, "total": len(docs)}
+
+@app.post("/api/documentos/status")
+async def update_status(request: StatusUpdateRequest, authorization: str = Header(default=None)):
+    """Atualiza status de um documento (recolhido ou baixado)"""
+    usuario_id = _get_user_id(authorization)
+    if not usuario_id:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+    
+    ok = atualizar_status_documento(request.codigo_rastreio, request.novo_status, usuario_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Documento não encontrado ou status inválido para esta transição")
+    
+    doc = buscar_documento(request.codigo_rastreio)
+    return {"success": True, "documento": doc}
+
+@app.get("/api/documentos/{codigo}")
+async def get_documento(codigo: str):
+    """Busca um documento pelo código de rastreio"""
+    doc = buscar_documento(codigo)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento não encontrado")
+    return doc
+
+# --- IMPRESSÃO ---
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve a página principal"""
     return FileResponse("static/index.html")
-
 
 @app.get("/api/printers")
 async def list_printers():
-    """Lista impressoras disponíveis"""
     printers = get_available_printers()
     return {"printers": printers, "default": DEFAULT_PRINTER}
 
-
 @app.post("/api/list-pdfs")
 async def list_pdfs(request: FolderRequest):
-    """Lista PDFs em uma pasta"""
     try:
         pdfs = find_pdf_files(request.path)
-        return {
-            "success": True,
-            "folder": request.path,
-            "total": len(pdfs),
-            "files": pdfs
-        }
+        return {"success": True, "folder": request.path, "total": len(pdfs), "files": pdfs}
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _get_user_id(authorization: str) -> int | None:
+    """Extrai user_id do token JWT"""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ")[1]
+    if token == "temp":
+        return 1
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return payload["user_id"]
+    except:
+        return None
+
+def _get_user_payload(authorization: str) -> dict | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ")[1]
+    if token == "temp":
+        return {"user_id": 1, "usuario": "teste", "nome": "Usuário Teste"}
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+    except:
+        return None
+
+
 @app.post("/api/print")
 async def print_files(request: PrintRequest, authorization: str = Header(default=None)):
-    """Imprime PDFs selecionados ou todos de uma pasta"""
+    """Imprime PDFs selecionados — com carimbo de rastreio e registro no banco"""
     try:
-        # Se tem arquivos selecionados, usa eles
         if request.selected_files:
             pdfs = [{"path": f, "name": Path(f).name} for f in request.selected_files]
         else:
             pdfs = find_pdf_files(request.folder_path)
         
         if not pdfs:
-            return {
-                "success": False,
-                "message": "Nenhum PDF para imprimir"
-            }
+            return {"success": False, "message": "Nenhum PDF para imprimir"}
+        
+        payload = _get_user_payload(authorization)
+        usuario_id = payload["user_id"] if payload else 1
+        computador = get_hostname()
+        produto = Path(request.folder_path).name
         
         results = []
         success_count = 0
-        
+        codigos_gerados = []
+        arquivos_tmp = []
+
         for pdf in pdfs:
-            result = print_pdf(pdf["path"], request.printer)
-            results.append({
-                "file": pdf["name"],
-                **result
-            })
+            # Gera código de rastreio único por arquivo
+            codigo = gerar_codigo_rastreio(computador)
+            
+            # Tenta carimbar o PDF
+            pdf_para_imprimir = stamp_pdf(pdf["path"], codigo)
+            usou_tmp = pdf_para_imprimir is not None
+            
+            if not usou_tmp:
+                pdf_para_imprimir = pdf["path"]  # fallback sem carimbo
+            else:
+                arquivos_tmp.append(pdf_para_imprimir)
+
+            result = print_pdf(pdf_para_imprimir, request.printer)
+            result["codigo_rastreio"] = codigo
+            results.append({"file": pdf["name"], **result})
+            
             if result["success"]:
                 success_count += 1
-        
-        # Registra no log
-        if authorization and authorization.startswith("Bearer "):
-            try:
-                token = authorization.split(" ")[1]
-                
-                # Se for token temporário (login desativado), usa usuário padrão
-                if token == "temp":
-                    payload = {"user_id": 1, "usuario": "teste", "nome": "Usuário Teste"}
-                else:
-                    payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-                produto = Path(request.folder_path).name
-                arquivos = [pdf["name"] for pdf in pdfs if any(r["file"] == pdf["name"] and r.get("success") for r in results)]
-                registrar_log(
-                    usuario_id=payload["user_id"],
+                codigos_gerados.append(codigo)
+                # Registra no banco de rastreio
+                registrar_documento_impresso(
+                    codigo_rastreio=codigo,
                     produto=produto,
+                    arquivo=pdf["name"],
                     pasta=request.folder_path,
-                    arquivos=arquivos,
-                    impressora=request.printer or "Padrão"
+                    impressora=request.printer or "Padrão",
+                    computador=computador,
+                    usuario_id=usuario_id
                 )
+        
+        # Limpa arquivos temporários
+        for tmp in arquivos_tmp:
+            try:
+                os.unlink(tmp)
             except:
-                pass  # Se falhar o log, não impede a impressão
+                pass
+
+        # Registra log geral (compatibilidade)
+        try:
+            arquivos_ok = [r["file"] for r in results if r.get("success")]
+            registrar_log(
+                usuario_id=usuario_id,
+                produto=produto,
+                pasta=request.folder_path,
+                arquivos=arquivos_ok,
+                impressora=request.printer or "Padrão"
+            )
+        except:
+            pass
         
         return {
             "success": success_count > 0,
             "total": len(pdfs),
             "printed": success_count,
             "failed": len(pdfs) - success_count,
-            "results": results
+            "results": results,
+            "codigos_rastreio": codigos_gerados
         }
         
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 
 @app.get("/api/search")
@@ -420,56 +561,36 @@ async def search_products(query: str = ""):
             if not item.is_dir():
                 continue
 
-            # Verifica se é um produto (código de 9 dígitos) ou categoria
             is_product = item.name[:9].isdigit() and len(item.name) >= 9
 
             if is_product:
-                # É produto direto (ex: EM REVISAO)
                 if query.upper() in item.name.upper():
                     pdf_count = sum(1 for sub in item.iterdir() 
                                    if sub.is_dir() and sub.name.upper().startswith("ENG")
                                    for p in sub.rglob("*.pdf") if "REVISAO" not in str(p))
-                    
                     results.append({
-                        "name": item.name,
-                        "path": str(item),
-                        "type": "PRODUTO",
-                        "status": status_name,
-                        "pdf_count": pdf_count
+                        "name": item.name, "path": str(item),
+                        "type": "PRODUTO", "status": status_name, "pdf_count": pdf_count
                     })
             else:
-                # É categoria, busca produtos dentro (ex: EM LINHA)
                 for product_folder in item.iterdir():
                     if not product_folder.is_dir():
                         continue
-                    
                     if query.upper() in product_folder.name.upper():
                         pdf_count = sum(1 for sub in product_folder.iterdir() 
                                        if sub.is_dir() and sub.name.upper().startswith("ENG")
                                        for p in sub.rglob("*.pdf") if "REVISAO" not in str(p))
-                        
                         results.append({
-                            "name": product_folder.name,
-                            "path": str(product_folder),
-                            "type": "PRODUTO",
-                            "status": status_name,
-                            "pdf_count": pdf_count
+                            "name": product_folder.name, "path": str(product_folder),
+                            "type": "PRODUTO", "status": status_name, "pdf_count": pdf_count
                         })
 
     results.sort(key=lambda x: (x["status"], x["name"]))
-
-    return {
-        "success": True,
-        "query": query,
-        "total": len(results),
-        "results": results[:20]
-    }
-
+    return {"success": True, "query": query, "total": len(results), "results": results[:20]}
 
 
 @app.get("/api/browse")
 async def browse_folder(path: str = ""):
-    """Navega pelas pastas para facilitar a seleção"""
     try:
         if not path:
             path = SEARCH_PATHS[0]
@@ -482,24 +603,16 @@ async def browse_folder(path: str = ""):
         items = []
         for item in sorted(folder.iterdir()):
             if item.is_dir():
-                # Conta PDFs nas subpastas ENG
                 pdf_count = 0
                 for subdir in item.iterdir():
                     if subdir.is_dir() and subdir.name.upper().startswith("ENG"):
                         pdf_count += len(list(subdir.glob("*.pdf")))
-                
                 items.append({
-                    "name": item.name,
-                    "path": str(item),
-                    "is_dir": True,
-                    "pdf_count": pdf_count
+                    "name": item.name, "path": str(item),
+                    "is_dir": True, "pdf_count": pdf_count
                 })
         
-        return {
-            "current": str(folder),
-            "parent": str(folder.parent) if folder.parent != folder else None,
-            "items": items
-        }
+        return {"current": str(folder), "parent": str(folder.parent) if folder.parent != folder else None, "items": items}
         
     except PermissionError:
         raise HTTPException(status_code=403, detail="Sem permissão para acessar esta pasta")
@@ -507,14 +620,13 @@ async def browse_folder(path: str = ""):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Monta arquivos estáticos
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "="*50)
-    print("🖨️  Printer - Linea Brasil")
+    print("🖨️  FastPrint - Linea Brasil")
     print("="*50)
     print(f"🌐 Acesse: http://localhost:8000")
     print(f"\n💡 Para a equipe acessar, use seu IP local:")
