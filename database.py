@@ -79,6 +79,13 @@ def init_db():
         )
     """)
     
+    # Migration: coluna fase (caso banco já exista sem ela)
+    try:
+        cursor.execute("ALTER TABLE documentos_impressos ADD COLUMN fase TEXT DEFAULT NULL")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # coluna já existe
+
     conn.commit()
     conn.close()
 
@@ -238,17 +245,11 @@ def atualizar_status_documento(codigo_rastreio: str, novo_status: str, usuario_i
     cursor = conn.cursor()
     agora = datetime.now().isoformat()
     
-    if novo_status == "recolhido":
+    if novo_status == "baixado":
         cursor.execute("""
-            UPDATE documentos_impressos 
-            SET status = 'recolhido', recolhido_por_id = ?, recolhido_em = ?
-            WHERE codigo_rastreio = ? AND status = 'entregue'
-        """, (usuario_id, agora, codigo_rastreio))
-    elif novo_status == "baixado":
-        cursor.execute("""
-            UPDATE documentos_impressos 
+            UPDATE documentos_impressos
             SET status = 'baixado', baixado_por_id = ?, baixado_em = ?
-            WHERE codigo_rastreio = ? AND status = 'recolhido'
+            WHERE codigo_rastreio = ? AND status = 'entregue'
         """, (usuario_id, agora, codigo_rastreio))
     else:
         conn.close()
@@ -277,6 +278,27 @@ def buscar_documento(codigo_rastreio: str) -> dict | None:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+def atualizar_fase_documento(codigo_rastreio: str, fase: str, por_produto: bool = False) -> int:
+    """Atualiza fase de um documento. Se por_produto=True, aplica a todos do mesmo produto."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    if por_produto:
+        cursor.execute("SELECT produto FROM documentos_impressos WHERE codigo_rastreio = ?", (codigo_rastreio,))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            return 0
+        produto = row["produto"]
+        cursor.execute("UPDATE documentos_impressos SET fase = ? WHERE produto = ?", (fase, produto))
+    else:
+        cursor.execute("UPDATE documentos_impressos SET fase = ? WHERE codigo_rastreio = ?", (fase, codigo_rastreio))
+
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected
 
 # Inicializa o banco quando o módulo é importado
 init_db()

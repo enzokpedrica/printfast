@@ -19,7 +19,8 @@ import jwt
 from database import (
     verificar_login, registrar_log, criar_usuario, listar_usuarios, listar_logs,
     gerar_codigo_rastreio, registrar_documento_impresso,
-    listar_documentos, atualizar_status_documento, buscar_documento
+    listar_documentos, atualizar_status_documento, buscar_documento,
+    atualizar_fase_documento
 )
 
 # ============================================
@@ -70,7 +71,12 @@ class NovoUsuarioRequest(BaseModel):
 
 class StatusUpdateRequest(BaseModel):
     codigo_rastreio: str
-    novo_status: str  # "recolhido" ou "baixado"
+    novo_status: str  # "baixado"
+
+class FaseUpdateRequest(BaseModel):
+    codigo_rastreio: str
+    fase: str  # "Lote Teste", "Lote Piloto", "Lote Padrão"
+    por_produto: bool = False
 
 # ============================================
 # FUNÇÕES AUXILIARES
@@ -388,7 +394,7 @@ async def get_documentos(status: str = None, limite: int = 200):
 
 @app.post("/api/documentos/status")
 async def update_status(request: StatusUpdateRequest, authorization: str = Header(default=None)):
-    """Atualiza status de um documento (recolhido ou baixado)"""
+    """Atualiza status de um documento (entregue → baixado)"""
     usuario_id = _get_user_id(authorization)
     if not usuario_id:
         raise HTTPException(status_code=401, detail="Não autorizado")
@@ -399,6 +405,23 @@ async def update_status(request: StatusUpdateRequest, authorization: str = Heade
     
     doc = buscar_documento(request.codigo_rastreio)
     return {"success": True, "documento": doc}
+
+@app.post("/api/documentos/fase")
+async def update_fase(request: FaseUpdateRequest, authorization: str = Header(default=None)):
+    """Atualiza a fase de um documento (opcionalmente para todos do mesmo produto)"""
+    usuario_id = _get_user_id(authorization)
+    if not usuario_id:
+        raise HTTPException(status_code=401, detail="Não autorizado")
+
+    fases_validas = ["Lote Teste", "Lote Piloto", "Lote Padrão"]
+    if request.fase not in fases_validas:
+        raise HTTPException(status_code=400, detail="Fase inválida")
+
+    affected = atualizar_fase_documento(request.codigo_rastreio, request.fase, request.por_produto)
+    if affected == 0:
+        raise HTTPException(status_code=404, detail="Documento não encontrado")
+
+    return {"success": True, "affected": affected}
 
 @app.get("/api/documentos/{codigo}")
 async def get_documento(codigo: str):
