@@ -104,6 +104,22 @@ def get_available_printers() -> list[str]:
             print(f"Erro ao listar impressoras: {e}")
     
     elif system == "Linux":
+        # Try PowerShell via WSL interop first (WSL environment)
+        for ps_cmd in ["powershell.exe", "powershell"]:
+            try:
+                result = subprocess.run(
+                    [ps_cmd, "-Command", "Get-Printer | Select-Object -ExpandProperty Name"],
+                    capture_output=True, text=True, timeout=10
+                )
+                if result.returncode == 0:
+                    printers = [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
+                    if printers:
+                        return printers
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                print(f"Erro ao listar impressoras via PowerShell: {e}")
+        # Fallback to CUPS lpstat
         try:
             result = subprocess.run(["lpstat", "-p"], capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
