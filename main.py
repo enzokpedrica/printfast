@@ -27,8 +27,8 @@ from database import (
 # FILTROS - AJUSTE CONFORME NECESSÁRIO
 # ============================================
 
-IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0", 
-                "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V1", 
+IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0",
+                "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V1",
                 "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V2"]
 
 IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM"]
@@ -56,7 +56,7 @@ class PrintRequest(BaseModel):
     folder_path: str
     printer: Optional[str] = None
     selected_files: Optional[list[str]] = None
-    
+
 class FolderRequest(BaseModel):
     path: str
 
@@ -91,7 +91,7 @@ def get_hostname() -> str:
 
 def get_available_printers() -> list[str]:
     system = platform.system()
-    
+
     if system == "Windows":
         try:
             result = subprocess.run(
@@ -102,62 +102,32 @@ def get_available_printers() -> list[str]:
                 return [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
         except Exception as e:
             print(f"Erro ao listar impressoras: {e}")
-    
-    elif system == "Linux":
-        # Try PowerShell via WSL interop first (WSL environment)
-        for ps_cmd in ["powershell.exe", "powershell"]:
-            try:
-                result = subprocess.run(
-                    [ps_cmd, "-Command", "Get-Printer | Select-Object -ExpandProperty Name"],
-                    capture_output=True, text=True, timeout=10
-                )
-                if result.returncode == 0:
-                    printers = [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
-                    if printers:
-                        return printers
-            except FileNotFoundError:
-                continue
-            except Exception as e:
-                print(f"Erro ao listar impressoras via PowerShell: {e}")
-        # Fallback to CUPS lpstat
-        try:
-            result = subprocess.run(["lpstat", "-p"], capture_output=True, text=True, timeout=10)
-            if result.returncode == 0:
-                printers = []
-                for line in result.stdout.split('\n'):
-                    if line.startswith('printer '):
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            printers.append(parts[1])
-                return printers
-        except Exception as e:
-            print(f"Erro ao listar impressoras: {e}")
-    
+
     return ["Impressora Padrão"]
 
 
 def find_pdf_files(folder_path: str) -> list[dict]:
     path = Path(folder_path)
-    
+
     if not path.exists():
         raise FileNotFoundError(f"Pasta não encontrada: {folder_path}")
-    
+
     pdf_files = []
-    
+
     def is_eng_folder(name: str) -> bool:
         upper_name = name.upper()
-        return (upper_name.startswith("ENG -") or 
-                upper_name.startswith("ENG-") or 
+        return (upper_name.startswith("ENG -") or
+                upper_name.startswith("ENG-") or
                 upper_name == "ENG")
-    
+
     def should_ignore_folder(name: str) -> bool:
         upper_name = name.upper()
         return any(termo in upper_name for termo in IGNORAR_PASTAS)
-    
+
     def should_ignore_pdf(name: str) -> bool:
         upper_name = name.upper()
         return any(termo in upper_name for termo in IGNORAR_PDFS)
-    
+
     def scan_folder(folder: Path, parent_name: str = ""):
         for item in folder.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
@@ -172,11 +142,11 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                 })
             elif item.is_dir() and not should_ignore_folder(item.name):
                 scan_folder(item, parent_name or folder.name)
-    
+
     for subdir in path.iterdir():
         if subdir.is_dir() and is_eng_folder(subdir.name) and not should_ignore_folder(subdir.name):
             scan_folder(subdir)
-    
+
     if is_eng_folder(path.name):
         for item in path.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
@@ -187,7 +157,7 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                         "folder": path.name,
                         "size_kb": round(item.stat().st_size / 1024, 1)
                     })
-    
+
     return sorted(pdf_files, key=lambda x: (x["folder"], x["name"]))
 
 
@@ -312,7 +282,7 @@ def stamp_pdf(pdf_path: str, codigo_rastreio: str) -> str | None:
 def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
     if not Path(pdf_path).exists():
         return {"success": False, "error": f"Arquivo não encontrado: {pdf_path}"}
-    
+
     sumatra_paths = [
         os.path.expandvars(r"%LOCALAPPDATA%\SumatraPDF\SumatraPDF.exe"),
         r"C:\Users\{}\AppData\Local\SumatraPDF\SumatraPDF.exe".format(os.environ.get('USERNAME', '')),
@@ -320,13 +290,13 @@ def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
         r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
         "SumatraPDF.exe",
     ]
-    
+
     sumatra_exe = None
     for path in sumatra_paths:
         if Path(path).exists():
             sumatra_exe = path
             break
-    
+
     if not sumatra_exe:
         try:
             result = subprocess.run(["where", "SumatraPDF.exe"], capture_output=True, text=True, timeout=5)
@@ -334,24 +304,24 @@ def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
                 sumatra_exe = result.stdout.strip().split('\n')[0]
         except:
             pass
-    
+
     if not sumatra_exe:
         return {"success": False, "error": "SumatraPDF não encontrado. Instale ou adicione ao PATH."}
-    
+
     try:
         if printer:
             cmd = [sumatra_exe, "-print-to", printer, "-silent", pdf_path]
         else:
             cmd = [sumatra_exe, "-print-to-default", "-silent", pdf_path]
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-        
+
         if result.returncode == 0:
             return {"success": True, "message": f"Enviado para impressão: {Path(pdf_path).name}"}
         else:
             error_msg = result.stderr or result.stdout or "Erro desconhecido"
             return {"success": False, "error": error_msg}
-            
+
     except subprocess.TimeoutExpired:
         return {"success": False, "error": "Timeout - impressão demorou demais"}
     except Exception as e:
@@ -368,9 +338,9 @@ async def login(request: LoginRequest):
     user = verificar_login(request.usuario, request.senha)
     if not user:
         raise HTTPException(status_code=401, detail="Usuário ou senha inválidos")
-    
+
     token = jwt.encode(
-        {"user_id": user["id"], "usuario": user["usuario"], "nome": user["nome"], 
+        {"user_id": user["id"], "usuario": user["usuario"], "nome": user["nome"],
          "exp": datetime.utcnow() + timedelta(hours=8)},
         SECRET_KEY, algorithm="HS256"
     )
@@ -414,11 +384,11 @@ async def update_status(request: StatusUpdateRequest, authorization: str = Heade
     usuario_id = _get_user_id(authorization)
     if not usuario_id:
         raise HTTPException(status_code=401, detail="Não autorizado")
-    
+
     ok = atualizar_status_documento(request.codigo_rastreio, request.novo_status, usuario_id)
     if not ok:
         raise HTTPException(status_code=400, detail="Documento não encontrado ou status inválido para esta transição")
-    
+
     doc = buscar_documento(request.codigo_rastreio)
     return {"success": True, "documento": doc}
 
@@ -502,15 +472,15 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
             pdfs = [{"path": f, "name": Path(f).name} for f in request.selected_files]
         else:
             pdfs = find_pdf_files(request.folder_path)
-        
+
         if not pdfs:
             return {"success": False, "message": "Nenhum PDF para imprimir"}
-        
+
         payload = _get_user_payload(authorization)
         usuario_id = payload["user_id"] if payload else 1
         computador = get_hostname()
         produto = Path(request.folder_path).name
-        
+
         results = []
         success_count = 0
         codigos_gerados = []
@@ -519,11 +489,11 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
         for pdf in pdfs:
             # Gera código de rastreio único por arquivo
             codigo = gerar_codigo_rastreio(computador)
-            
+
             # Tenta carimbar o PDF
             pdf_para_imprimir = stamp_pdf(pdf["path"], codigo)
             usou_tmp = pdf_para_imprimir is not None
-            
+
             if not usou_tmp:
                 pdf_para_imprimir = pdf["path"]  # fallback sem carimbo
             else:
@@ -532,7 +502,7 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
             result = print_pdf(pdf_para_imprimir, request.printer)
             result["codigo_rastreio"] = codigo
             results.append({"file": pdf["name"], **result})
-            
+
             if result["success"]:
                 success_count += 1
                 codigos_gerados.append(codigo)
@@ -546,7 +516,7 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
                     computador=computador,
                     usuario_id=usuario_id
                 )
-        
+
         # Limpa arquivos temporários
         for tmp in arquivos_tmp:
             try:
@@ -566,7 +536,7 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
             )
         except:
             pass
-        
+
         return {
             "success": success_count > 0,
             "total": len(pdfs),
@@ -575,7 +545,7 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
             "results": results,
             "codigos_rastreio": codigos_gerados
         }
-        
+
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -588,12 +558,12 @@ async def search_products(query: str = ""):
         return {"success": False, "message": "Digite pelo menos 3 caracteres", "results": []}
 
     results = []
-    
+
     for search_path in SEARCH_PATHS:
         status_path = Path(search_path)
         if not status_path.exists():
             continue
-        
+
         status_name = status_path.name.split(" - ")[1] if " - " in status_path.name else status_path.name
 
         for item in status_path.iterdir():
@@ -604,7 +574,7 @@ async def search_products(query: str = ""):
 
             if is_product:
                 if query.upper() in item.name.upper():
-                    pdf_count = sum(1 for sub in item.iterdir() 
+                    pdf_count = sum(1 for sub in item.iterdir()
                                    if sub.is_dir() and sub.name.upper().startswith("ENG")
                                    for p in sub.rglob("*.pdf") if "REVISAO" not in str(p))
                     results.append({
@@ -616,7 +586,7 @@ async def search_products(query: str = ""):
                     if not product_folder.is_dir():
                         continue
                     if query.upper() in product_folder.name.upper():
-                        pdf_count = sum(1 for sub in product_folder.iterdir() 
+                        pdf_count = sum(1 for sub in product_folder.iterdir()
                                        if sub.is_dir() and sub.name.upper().startswith("ENG")
                                        for p in sub.rglob("*.pdf") if "REVISAO" not in str(p))
                         results.append({
@@ -633,12 +603,12 @@ async def browse_folder(path: str = ""):
     try:
         if not path:
             path = SEARCH_PATHS[0]
-        
+
         folder = Path(path)
-        
+
         if not folder.exists():
             raise HTTPException(status_code=404, detail="Pasta não encontrada")
-        
+
         items = []
         for item in sorted(folder.iterdir()):
             if item.is_dir():
@@ -650,9 +620,9 @@ async def browse_folder(path: str = ""):
                     "name": item.name, "path": str(item),
                     "is_dir": True, "pdf_count": pdf_count
                 })
-        
+
         return {"current": str(folder), "parent": str(folder.parent) if folder.parent != folder else None, "items": items}
-        
+
     except PermissionError:
         raise HTTPException(status_code=403, detail="Sem permissão para acessar esta pasta")
     except Exception as e:
@@ -671,5 +641,5 @@ if __name__ == "__main__":
     print(f"\n💡 Para a equipe acessar, use seu IP local:")
     print(f"   http://SEU_IP:8000")
     print("\n" + "="*50 + "\n")
-    
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
