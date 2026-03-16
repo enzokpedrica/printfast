@@ -218,7 +218,7 @@ def listar_documentos(status: str = None, limite: int = 200):
     cursor = conn.cursor()
     
     query = """
-        SELECT 
+        SELECT
             d.*,
             u1.nome as impresso_por_nome,
             u2.nome as recolhido_por_nome,
