@@ -31,7 +31,7 @@ IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0",
                 "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V1",
                 "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V2"]
 
-IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM"]
+IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM", "REVISAO", "REVISÃO"]
 
 SECRET_KEY = "fastprint-linea-2025-sua-chave-secreta"
 
