@@ -114,3 +114,41 @@ Para permitir que outros acessem:
 ```
 
 Desenvolvido para Linea Brasil 🏭
+
+---
+
+## 🐳 Rodando com Docker
+
+### 1. Build da imagem
+
+```bash
+docker build -t printfast:latest .
+```
+
+### 2. Executar container
+
+```bash
+docker run -d \
+   --name printfast \
+   -p 8000:8000 \
+   -e FASTPRINT_DB_PATH=/data/fastprint.db \
+   -v $(pwd)/data:/data \
+   printfast:latest
+```
+
+### 3. Acesso
+
+```
+http://localhost:8000
+```
+
+### 4. Usando Docker Compose (opcional)
+
+```bash
+docker compose up -d --build
+```
+
+### Observações importantes
+
+- O banco SQLite fica persistido em `./data/fastprint.db`.
+- Em container Linux, a impressão via SumatraPDF/Windows não funciona. Nesse cenário, use o Docker para API/painel/rastreio e execute a etapa de impressão em host Windows.

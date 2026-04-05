@@ -1,0 +1,11 @@
+services:
+  printfast:
+    build: .
+    container_name: printfast
+    ports:
+      - "8000:8000"
+    environment:
+      - FASTPRINT_DB_PATH=/data/fastprint.db
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

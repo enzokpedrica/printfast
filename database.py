@@ -4,11 +4,12 @@ Gerencia usuários, logs de impressão e rastreio de documentos
 """
 
 import sqlite3
+import os
 from pathlib import Path
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
-DB_PATH = Path(__file__).parent / "fastprint.db"
+DB_PATH = Path(os.getenv("FASTPRINT_DB_PATH", str(Path(__file__).parent / "fastprint.db")))
 
 def get_connection():
     """Retorna conexão com o banco"""
