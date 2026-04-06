@@ -1,0 +1,45 @@
+# Serviço systemd para FastPrint (equivalente ao NSSM no Windows)
+#
+# Instalação:
+#   sudo cp fastprint.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now fastprint
+#
+# Logs:
+#   journalctl -u fastprint -f
+
+[Unit]
+Description=FastPrint — Sistema de Impressão em Lote
+Documentation=https://github.com/sua-org/fastprint
+After=network.target cups.service
+Wants=cups.service
+
+[Service]
+Type=simple
+
+# Crie o usuário: sudo useradd -r -s /bin/false fastprint
+User=fastprint
+Group=lpadmin
+
+WorkingDirectory=/opt/fastprint
+
+# Ative o venv antes de iniciar:
+#   python3 -m venv /opt/fastprint/.venv
+#   /opt/fastprint/.venv/bin/pip install -r requirements.txt
+ExecStart=/opt/fastprint/.venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+
+Restart=always
+RestartSec=5
+
+# Variáveis de ambiente — ajuste conforme seu ambiente
+Environment=PYTHONUNBUFFERED=1
+Environment=SECRET_KEY=fastprint-linea-2025-sua-chave-secreta
+Environment=DEFAULT_PRINTER=
+Environment=SEARCH_PATH_1=/mnt/docs/EM_LINHA
+Environment=SEARCH_PATH_2=/mnt/docs/EM_REVISAO
+
+# Aumenta o limite de arquivos abertos (útil para scan de muitos PDFs)
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

@@ -33,7 +33,7 @@ IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0",
 
 IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM", "REVISAO", "REVISÃO"]
 
-SECRET_KEY = "fastprint-linea-2025-sua-chave-secreta"
+SECRET_KEY = os.environ.get("SECRET_KEY", "fastprint-linea-2025-sua-chave-secreta")
 
 app = FastAPI(title="FastPrint - Linea Brasil")
 
@@ -41,12 +41,26 @@ app = FastAPI(title="FastPrint - Linea Brasil")
 # CONFIGURAÇÕES
 # ============================================
 
-SEARCH_PATHS = [
-    r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\1 - EM LINHA",
-    r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
-]
+def _load_search_paths() -> list[str]:
+    """Carrega caminhos de busca de variáveis de ambiente ou usa padrão Windows."""
+    paths = []
+    i = 1
+    while True:
+        p = os.environ.get(f"SEARCH_PATH_{i}")
+        if not p:
+            break
+        paths.append(p)
+        i += 1
+    if paths:
+        return paths
+    # Padrão Windows (legado)
+    return [
+        r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\1 - EM LINHA",
+        r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
+    ]
 
-DEFAULT_PRINTER: Optional[str] = None
+SEARCH_PATHS = _load_search_paths()
+DEFAULT_PRINTER: Optional[str] = os.environ.get("DEFAULT_PRINTER") or None
 
 # ============================================
 # MODELS
@@ -89,10 +103,72 @@ def get_hostname() -> str:
     except:
         return "DESCONHECIDO"
 
-def get_available_printers() -> list[str]:
-    system = platform.system()
+class PrintService:
+    """
+    Camada de abstração para impressão.
+    - Linux: usa CUPS via `lp` / `lpstat`
+    - Windows: usa SumatraPDF via subprocess (fallback legado)
+    """
 
-    if system == "Windows":
+    @staticmethod
+    def get_printers() -> list[str]:
+        system = platform.system()
+        if system == "Linux":
+            return PrintService._get_printers_linux()
+        return PrintService._get_printers_windows()
+
+    @staticmethod
+    def print(pdf_path: str, printer: Optional[str] = None) -> dict:
+        if not Path(pdf_path).exists():
+            return {"success": False, "error": f"Arquivo não encontrado: {pdf_path}"}
+        system = platform.system()
+        if system == "Linux":
+            return PrintService._print_linux(pdf_path, printer)
+        return PrintService._print_windows(pdf_path, printer)
+
+    # ------------------------------------------------------------------
+    # Linux (CUPS / lp)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_printers_linux() -> list[str]:
+        try:
+            result = subprocess.run(
+                ["lpstat", "-a"], capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return [line.split()[0] for line in result.stdout.strip().splitlines() if line.strip()]
+        except FileNotFoundError:
+            print("lpstat não encontrado — CUPS instalado?")
+        except Exception as e:
+            print(f"Erro ao listar impressoras (Linux): {e}")
+        return ["Impressora Padrão"]
+
+    @staticmethod
+    def _print_linux(pdf_path: str, printer: Optional[str] = None) -> dict:
+        try:
+            if printer:
+                cmd = ["lp", "-d", printer, pdf_path]
+            else:
+                cmd = ["lp", pdf_path]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if result.returncode == 0:
+                return {"success": True, "message": f"Enviado para impressão: {Path(pdf_path).name}"}
+            error_msg = result.stderr or result.stdout or "Erro desconhecido"
+            return {"success": False, "error": error_msg}
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": "Timeout — impressão demorou demais"}
+        except FileNotFoundError:
+            return {"success": False, "error": "Comando `lp` não encontrado. CUPS instalado?"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # ------------------------------------------------------------------
+    # Windows (SumatraPDF)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _get_printers_windows() -> list[str]:
         try:
             result = subprocess.run(
                 ["powershell", "-Command", "Get-Printer | Select-Object -ExpandProperty Name"],
@@ -101,9 +177,52 @@ def get_available_printers() -> list[str]:
             if result.returncode == 0:
                 return [p.strip() for p in result.stdout.strip().split('\n') if p.strip()]
         except Exception as e:
-            print(f"Erro ao listar impressoras: {e}")
+            print(f"Erro ao listar impressoras (Windows): {e}")
+        return ["Impressora Padrão"]
 
-    return ["Impressora Padrão"]
+    @staticmethod
+    def _find_sumatra() -> Optional[str]:
+        candidates = [
+            os.path.expandvars(r"%LOCALAPPDATA%\SumatraPDF\SumatraPDF.exe"),
+            r"C:\Users\{}\AppData\Local\SumatraPDF\SumatraPDF.exe".format(
+                os.environ.get("USERNAME", "")
+            ),
+            r"C:\Program Files\SumatraPDF\SumatraPDF.exe",
+            r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
+            "SumatraPDF.exe",
+        ]
+        for path in candidates:
+            if Path(path).exists():
+                return path
+        try:
+            result = subprocess.run(
+                ["where", "SumatraPDF.exe"], capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                return result.stdout.strip().splitlines()[0]
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _print_windows(pdf_path: str, printer: Optional[str] = None) -> dict:
+        sumatra_exe = PrintService._find_sumatra()
+        if not sumatra_exe:
+            return {"success": False, "error": "SumatraPDF não encontrado. Instale ou adicione ao PATH."}
+        try:
+            if printer:
+                cmd = [sumatra_exe, "-print-to", printer, "-silent", pdf_path]
+            else:
+                cmd = [sumatra_exe, "-print-to-default", "-silent", pdf_path]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            if result.returncode == 0:
+                return {"success": True, "message": f"Enviado para impressão: {Path(pdf_path).name}"}
+            error_msg = result.stderr or result.stdout or "Erro desconhecido"
+            return {"success": False, "error": error_msg}
+        except subprocess.TimeoutExpired:
+            return {"success": False, "error": "Timeout — impressão demorou demais"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
 
 def find_pdf_files(folder_path: str) -> list[dict]:
@@ -279,54 +398,6 @@ def stamp_pdf(pdf_path: str, codigo_rastreio: str) -> str | None:
         return None
 
 
-def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
-    if not Path(pdf_path).exists():
-        return {"success": False, "error": f"Arquivo não encontrado: {pdf_path}"}
-
-    sumatra_paths = [
-        os.path.expandvars(r"%LOCALAPPDATA%\SumatraPDF\SumatraPDF.exe"),
-        r"C:\Users\{}\AppData\Local\SumatraPDF\SumatraPDF.exe".format(os.environ.get('USERNAME', '')),
-        r"C:\Program Files\SumatraPDF\SumatraPDF.exe",
-        r"C:\Program Files (x86)\SumatraPDF\SumatraPDF.exe",
-        "SumatraPDF.exe",
-    ]
-
-    sumatra_exe = None
-    for path in sumatra_paths:
-        if Path(path).exists():
-            sumatra_exe = path
-            break
-
-    if not sumatra_exe:
-        try:
-            result = subprocess.run(["where", "SumatraPDF.exe"], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                sumatra_exe = result.stdout.strip().split('\n')[0]
-        except:
-            pass
-
-    if not sumatra_exe:
-        return {"success": False, "error": "SumatraPDF não encontrado. Instale ou adicione ao PATH."}
-
-    try:
-        if printer:
-            cmd = [sumatra_exe, "-print-to", printer, "-silent", pdf_path]
-        else:
-            cmd = [sumatra_exe, "-print-to-default", "-silent", pdf_path]
-
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
-
-        if result.returncode == 0:
-            return {"success": True, "message": f"Enviado para impressão: {Path(pdf_path).name}"}
-        else:
-            error_msg = result.stderr or result.stdout or "Erro desconhecido"
-            return {"success": False, "error": error_msg}
-
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": "Timeout - impressão demorou demais"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
 # ============================================
 # ROTAS DA API
 # ============================================
@@ -425,7 +496,7 @@ async def root():
 
 @app.get("/api/printers")
 async def list_printers():
-    printers = get_available_printers()
+    printers = PrintService.get_printers()
     return {"printers": printers, "default": DEFAULT_PRINTER}
 
 @app.post("/api/list-pdfs")
@@ -499,7 +570,7 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
             else:
                 arquivos_tmp.append(pdf_para_imprimir)
 
-            result = print_pdf(pdf_para_imprimir, request.printer)
+            result = PrintService.print(pdf_para_imprimir, request.printer)
             result["codigo_rastreio"] = codigo
             results.append({"file": pdf["name"], **result})
 

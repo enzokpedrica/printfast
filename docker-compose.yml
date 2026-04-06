@@ -1,0 +1,42 @@
+services:
+  fastprint:
+    build: .
+    container_name: fastprint
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+    volumes:
+      # Banco SQLite persistente
+      - fastprint_data:/app/data
+
+      # Compartilhamento de rede montado no host (ajuste o caminho)
+      # Monte o SMB/NFS antes de subir o container:
+      #   sudo mount -t cifs //servidor/share /mnt/docs -o user=...,pass=...
+      - /mnt/docs:/mnt/docs:ro
+
+      # (Opcional) Compartilhar o socket CUPS do host em vez de instalar CUPS no container.
+      # Descomente se não quiser gerenciar CUPS dentro do container.
+      # - /var/run/cups/cups.sock:/var/run/cups/cups.sock
+
+    environment:
+      # --- Segurança ---
+      SECRET_KEY: "fastprint-linea-2025-sua-chave-secreta"   # TROQUE em produção
+
+      # --- Impressoras (IP fixo na rede local) ---
+      # Formato: Nome=URI, separados por vírgula.
+      # URIs comuns:
+      #   IPP (recomendado):  ipp://192.168.1.100/ipp/print
+      #   LPD:                lpd://192.168.1.100/impressora
+      #   Socket RAW:         socket://192.168.1.100:9100
+      PRINTERS: "Impressora1=ipp://192.168.1.100/ipp/print,Impressora2=ipp://192.168.1.101/ipp/print"
+
+      # Impressora padrão (deixe vazio para usar a padrão do CUPS)
+      DEFAULT_PRINTER: ""
+
+      # --- Caminhos de busca de PDFs (dentro do container) ---
+      SEARCH_PATH_1: "/mnt/docs/EM_LINHA"
+      SEARCH_PATH_2: "/mnt/docs/EM_REVISAO"
+
+volumes:
+  fastprint_data:
