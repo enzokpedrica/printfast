@@ -7,3 +7,5 @@ python -c "from database import listar_logs; print(listar_logs())"
 
 // Criar Usuario
 python -c "from database import listar_usuarios; print(listar_usuarios())"
+
+teste
