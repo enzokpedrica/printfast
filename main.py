@@ -576,7 +576,7 @@ async def search_products(query: str = ""):
                 if query.upper() in item.name.upper():
                     pdf_count = sum(1 for sub in item.iterdir()
                                    if sub.is_dir() and sub.name.upper().startswith("ENG")
-                                   for p in sub.rglob("*.pdf") if "REVISAO" not in str(p))
+                                   for p in sub.rglob("*.pdf") if not any(termo in str(p).upper() for termo in IGNORAR_PASTAS))
                     results.append({
                         "name": item.name, "path": str(item),
                         "type": "PRODUTO", "status": status_name, "pdf_count": pdf_count
@@ -588,7 +588,7 @@ async def search_products(query: str = ""):
                     if query.upper() in product_folder.name.upper():
                         pdf_count = sum(1 for sub in product_folder.iterdir()
                                        if sub.is_dir() and sub.name.upper().startswith("ENG")
-                                       for p in sub.rglob("*.pdf") if "REVISAO" not in str(p))
+                                       for p in sub.rglob("*.pdf") if not any(termo in str(p).upper() for termo in IGNORAR_PASTAS))
                         results.append({
                             "name": product_folder.name, "path": str(product_folder),
                             "type": "PRODUTO", "status": status_name, "pdf_count": pdf_count
