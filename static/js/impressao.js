@@ -1,7 +1,7 @@
-import { state } from './state.js';
-import { apiSearch, apiGetPrinters, apiListPdfs, apiPrint } from './api.js';
-import { showToast, closeModal } from './ui.js';
-import { loadDocs } from './rastreio.js';
+import { state } from './state.js?v=2';
+import { apiSearch, apiGetPrinters, apiListPdfs, apiPrint } from './api.js?v=2';
+import { showToast, closeModal } from './ui.js?v=2';
+import { loadDocs } from './rastreio.js?v=2';
 
 export async function searchProducts(query) {
     const container = document.getElementById('searchResults');

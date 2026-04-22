@@ -1,9 +1,9 @@
-import { state } from './state.js';
-import { apiLogin } from './api.js';
-import { getInitials, showToast, closeModal, showLogin, showApp } from './ui.js';
-import { loadDocs, setFilter, setFaseFilter, filterDocs, openFaseModal, selectFaseOption, confirmFaseUpdate, openStatusModal, confirmStatusUpdate } from './rastreio.js';
-import { loadDashboard } from './dashboard.js';
-import { searchProducts, selectProduct, clearSelection, loadPrinters, scanFolder, selectAll, deselectAll, toggleFile, printSelected, confirmPrint } from './impressao.js';
+import { state } from './state.js?v=2';
+import { apiLogin } from './api.js?v=2';
+import { getInitials, showToast, closeModal, showLogin, showApp } from './ui.js?v=2';
+import { loadDocs, setFilter, setFaseFilter, filterDocs, openFaseModal, selectFaseOption, confirmFaseUpdate, openStatusModal, confirmStatusUpdate } from './rastreio.js?v=2';
+import { loadDashboard } from './dashboard.js?v=2';
+import { searchProducts, selectProduct, clearSelection, loadPrinters, scanFolder, selectAll, deselectAll, toggleFile, printSelected, confirmPrint } from './impressao.js?v=2';
 
 // ============================================
 // TABS
