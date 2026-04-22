@@ -20,11 +20,11 @@ export async function apiListPdfs(path) {
     return response.json();
 }
 
-export async function apiPrint(folder_path, printer, selected_files, token) {
+export async function apiPrint(folder_path, printer, selected_files, token, fase) {
     const response = await fetch('/api/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ folder_path, printer, selected_files }),
+        body: JSON.stringify({ folder_path, printer, selected_files, fase: fase || null }),
     });
     return response.json();
 }

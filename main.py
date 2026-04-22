@@ -56,6 +56,7 @@ class PrintRequest(BaseModel):
     folder_path: str
     printer: Optional[str] = None
     selected_files: Optional[list[str]] = None
+    fase: Optional[str] = None  # "Lote Teste", "Lote Piloto", "Lote Padrão"
 
 class FolderRequest(BaseModel):
     path: str
@@ -161,7 +162,7 @@ def find_pdf_files(folder_path: str) -> list[dict]:
     return sorted(pdf_files, key=lambda x: (x["folder"], x["name"]))
 
 
-def stamp_pdf(pdf_path: str, codigo_rastreio: str) -> str | None:
+def stamp_pdf(pdf_path: str, codigo_rastreio: str, fase: str = None) -> str | None:
     """
     Adiciona carimbo de rastreio no topo do PDF.
     Lê o tamanho e rotação reais de cada página para posicionar corretamente.
@@ -174,7 +175,8 @@ def stamp_pdf(pdf_path: str, codigo_rastreio: str) -> str | None:
 
         reader = PdfReader(pdf_path)
         writer = PdfWriter()
-        texto = f"FastPrint  |  {codigo_rastreio}  |  {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  {get_hostname()}"
+        fase_parte = f"  |  {fase}" if fase else ""
+        texto = f"FastPrint  |  {codigo_rastreio}{fase_parte}  |  {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  {get_hostname()}"
 
         for page in reader.pages:
             # Lê dimensões reais da página
@@ -491,7 +493,7 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
             codigo = gerar_codigo_rastreio(computador)
 
             # Tenta carimbar o PDF
-            pdf_para_imprimir = stamp_pdf(pdf["path"], codigo)
+            pdf_para_imprimir = stamp_pdf(pdf["path"], codigo, request.fase)
             usou_tmp = pdf_para_imprimir is not None
 
             if not usou_tmp:
@@ -514,7 +516,8 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
                     pasta=request.folder_path,
                     impressora=request.printer or "Padrão",
                     computador=computador,
-                    usuario_id=usuario_id
+                    usuario_id=usuario_id,
+                    fase=request.fase
                 )
 
         # Limpa arquivos temporários

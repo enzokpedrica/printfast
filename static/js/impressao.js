@@ -136,6 +136,7 @@ export function printSelected() {
     document.getElementById('modalProduto').textContent   = produto;
     document.getElementById('modalImpressora').textContent = impressora;
     document.getElementById('modalArquivos').textContent   = `${selected.length} arquivo(s)`;
+    document.getElementById('modalFase').value = '';
     document.getElementById('confirmModal').classList.add('show');
 }
 
@@ -144,13 +145,14 @@ export async function confirmPrint() {
     const selected = state.currentFiles.filter(f => f.selected);
     const path     = document.getElementById('folderPath').value.trim();
     const printer  = document.getElementById('printerSelect').value || null;
+    const fase     = document.getElementById('modalFase').value || null;
     const btn      = document.getElementById('printBtn');
     btn.disabled   = true;
     btn.innerHTML  = '⏳ Imprimindo...';
     document.getElementById('progressContainer').classList.add('active');
 
     try {
-        const data = await apiPrint(path, printer, selected.map(f => f.path), state.authToken);
+        const data = await apiPrint(path, printer, selected.map(f => f.path), state.authToken, fase);
         let idx = 0;
         state.currentFiles.forEach((file, i) => {
             if (file.selected && data.results[idx]) {

@@ -201,15 +201,16 @@ def registrar_documento_impresso(
     pasta: str,
     impressora: str,
     computador: str,
-    usuario_id: int
+    usuario_id: int,
+    fase: str = None
 ):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO documentos_impressos 
-        (codigo_rastreio, produto, arquivo, pasta, impressora, computador, impresso_por_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (codigo_rastreio, produto, arquivo, pasta, impressora, computador, usuario_id))
+        INSERT INTO documentos_impressos
+        (codigo_rastreio, produto, arquivo, pasta, impressora, computador, impresso_por_id, fase)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (codigo_rastreio, produto, arquivo, pasta, impressora, computador, usuario_id, fase))
     conn.commit()
     conn.close()
 
