@@ -30,4 +30,6 @@ export function showApp(user) {
     document.getElementById('appContainer').style.display = 'block';
     document.getElementById('userName').textContent = user.nome;
     document.getElementById('userAvatar').textContent = getInitials(user.nome);
+    const adminLink = document.getElementById('adminLink');
+    if (adminLink) adminLink.style.display = user.role === 'admin' ? 'flex' : 'none';
 }

@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Usuários - FastPrint</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/main.css">
+    <style>
+        .users-page { max-width: 1100px; margin: 2rem auto; padding: 0 2rem; }
+        .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; }
+        .back-link { color: var(--text-secondary); text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+        .back-link:hover { color: var(--accent); }
+        .table-section { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+        .table-section-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .table-section-header h2 { font-size: 1rem; font-weight: 600; }
+        .users-table { width: 100%; border-collapse: collapse; }
+        .users-table th, .users-table td { padding: 0.75rem 1.25rem; text-align: left; border-bottom: 1px solid var(--border); }
+        .users-table th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 600; background: var(--bg-tertiary); }
+        .users-table tbody tr:hover { background: var(--bg-tertiary); }
+        .users-table tbody tr:last-child td { border-bottom: none; }
+        .role-badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+        .role-admin { background: var(--accent-dim); color: var(--accent); }
+        .role-user { background: rgba(96,165,250,0.15); color: var(--info); }
+        .status-active { color: var(--success); font-size: 0.82rem; }
+        .status-inactive { color: var(--text-muted); font-size: 0.82rem; }
+        .action-btns { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+        .btn-xs { padding: 0.2rem 0.6rem; font-size: 0.78rem; border-radius: 6px; }
+        .field-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.85rem; }
+        .field-row label { min-width: 130px; font-size: 0.85rem; color: var(--text-secondary); flex-shrink: 0; }
+        .field-input { flex: 1; padding: 0.5rem 0.75rem; background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); font-family: 'Space Grotesk', sans-serif; font-size: 0.9rem; outline: none; transition: border-color 0.2s; }
+        .field-input:focus { border-color: var(--accent); }
+        .copy-box { background: var(--bg-tertiary); border: 1px solid var(--border); border-radius: 8px; padding: 0.85rem 1rem; font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; word-break: break-all; color: var(--accent); margin-bottom: 1rem; line-height: 1.6; }
+        .form-error { color: var(--error); font-size: 0.82rem; padding: 0 1.5rem 0.5rem; display: none; }
+        #loadingState, #errorState { text-align: center; padding: 5rem 2rem; color: var(--text-secondary); }
+        #errorState h2 { margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+
+<div id="loadingState">
+    <div class="spinner" style="margin: 0 auto 1rem;"></div>
+    Verificando acesso...
+</div>
+
+<div id="errorState" style="display:none;">
+    <div style="font-size: 3rem; margin-bottom: 1rem;">🔒</div>
+    <h2 id="errorMsg">Acesso não autorizado</h2>
+    <p style="margin-top: 0.5rem; margin-bottom: 2rem; color: var(--text-secondary);">
+        <a href="/" style="color: var(--accent);">← Voltar ao FastPrint</a>
+    </p>
+</div>
+
+<div id="pageContent" style="display:none;">
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">🖨️</div>
+            <div class="logo-text"><h1>FastPrint</h1><span>Linea Brasil</span></div>
+        </div>
+        <div style="display:flex; align-items:center; gap:1.5rem;">
+            <a href="/" class="back-link">← Voltar ao sistema</a>
+            <div class="user-badge">
+                <div class="user-avatar" id="userAvatar">AD</div>
+                <span id="userName">Admin</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="users-page">
+        <div class="page-header">
+            <h1 style="font-size:1.4rem; font-weight:700;">⚙️ Gestão de Usuários</h1>
+            <button class="btn btn-primary" onclick="openCreateModal()">+ Novo Usuário</button>
+        </div>
+
+        <div class="table-section">
+            <div class="table-section-header">
+                <h2>Usuários do sistema</h2>
+                <span id="userCount" style="font-size:0.82rem; color:var(--text-secondary);">0 usuários</span>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th style="width:40px;">#</th>
+                            <th>Nome</th>
+                            <th>Usuário (login)</th>
+                            <th style="width:110px;">Perfil</th>
+                            <th style="width:90px;">Status</th>
+                            <th style="width:100px;">Criado em</th>
+                            <th style="width:220px;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTableBody">
+                        <tr><td colspan="7" style="text-align:center; padding:2rem; color:var(--text-muted);">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- MODAL: Criar Usuário -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal-box">
+        <div class="modal-header"><span style="font-size:1.5rem;">👤</span><h3>Novo Usuário</h3></div>
+        <div class="modal-content">
+            <div class="field-row">
+                <label>Nome completo</label>
+                <input type="text" id="createNome" class="field-input" placeholder="Nome Sobrenome">
+            </div>
+            <div class="field-row">
+                <label>Usuário (login)</label>
+                <input type="text" id="createUsuario" class="field-input" placeholder="nome.sobrenome" autocomplete="off">
+            </div>
+            <div class="field-row">
+                <label>Senha inicial</label>
+                <input type="password" id="createSenha" class="field-input" placeholder="Mín. 8 caracteres" autocomplete="new-password">
+            </div>
+            <div class="field-row">
+                <label>Perfil</label>
+                <select id="createRole" class="field-input">
+                    <option value="user">Usuário comum</option>
+                    <option value="admin">Administrador</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-error" id="createError"></div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal('createModal')">Cancelar</button>
+            <button class="btn btn-primary" onclick="submitCreateUser()">Criar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Editar Usuário -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal-box">
+        <div class="modal-header"><span style="font-size:1.5rem;">✏️</span><h3>Editar Usuário</h3></div>
+        <div class="modal-content">
+            <input type="hidden" id="editUserId">
+            <div class="field-row">
+                <label>Nome completo</label>
+                <input type="text" id="editNome" class="field-input">
+            </div>
+            <div class="field-row">
+                <label>Perfil</label>
+                <select id="editRole" class="field-input">
+                    <option value="user">Usuário comum</option>
+                    <option value="admin">Administrador</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-error" id="editError"></div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal('editModal')">Cancelar</button>
+            <button class="btn btn-primary" onclick="submitEditUser()">Salvar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Link de Reset -->
+<div class="modal-overlay" id="resetLinkModal">
+    <div class="modal-box">
+        <div class="modal-header"><span style="font-size:1.5rem;">🔑</span><h3>Link de Redefinição de Senha</h3></div>
+        <div class="modal-content">
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:1rem;">
+                Copie o link abaixo e envie ao usuário (válido por 24 horas):
+            </p>
+            <div class="copy-box" id="resetLinkUrl"></div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal('resetLinkModal')">Fechar</button>
+            <button class="btn btn-primary" onclick="copyResetLink()">📋 Copiar link</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Confirmar toggle ativo/inativo -->
+<div class="modal-overlay" id="toggleModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <span style="font-size:1.5rem;" id="toggleIcon">⚠️</span>
+            <h3 id="toggleTitle">Desativar Usuário</h3>
+        </div>
+        <div class="modal-content">
+            <p id="toggleMsg" style="color:var(--text-secondary); font-size:0.9rem;"></p>
+        </div>
+        <input type="hidden" id="toggleUserId">
+        <input type="hidden" id="toggleAtivoValue">
+        <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="closeModal('toggleModal')">Cancelar</button>
+            <button class="btn btn-primary" id="toggleConfirmBtn" onclick="submitToggleUser()">Confirmar</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script type="module" src="/static/js/users.js"></script>
+</body>
+</html>

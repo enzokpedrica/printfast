@@ -39,10 +39,13 @@
             <div class="logo-icon">🖨️</div>
             <div class="logo-text"><h1>FastPrint</h1><span>Linea Brasil</span></div>
         </div>
-        <div class="user-badge" onclick="handleLogout()">
-            <div class="user-avatar" id="userAvatar">EP</div>
-            <span id="userName">Usuário</span>
-            <span style="margin-left: 0.5rem; opacity: 0.5;">✕</span>
+        <div style="display:flex; align-items:center; gap:1rem;">
+            <a id="adminLink" href="/users" style="display:none; align-items:center; gap:0.4rem; padding:0.4rem 0.85rem; border:1px solid var(--border); border-radius:100px; font-size:0.8rem; color:var(--text-secondary); text-decoration:none; transition:all 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⚙️ Usuários</a>
+            <div class="user-badge" onclick="handleLogout()">
+                <div class="user-avatar" id="userAvatar">EP</div>
+                <span id="userName">Usuário</span>
+                <span style="margin-left: 0.5rem; opacity: 0.5;">✕</span>
+            </div>
         </div>
     </header>
 
@@ -176,7 +179,6 @@
                             <col class="col-impresso">
                             <col class="col-data">
                             <col class="col-status">
-                            <col class="col-acoes">
                         </colgroup>
                         <thead>
                             <tr>
@@ -187,7 +189,6 @@
                                 <th>Impresso por</th>
                                 <th>Data</th>
                                 <th>Status</th>
-                                <th>Ações</th>
                             </tr>
                         </thead>
                         <tbody id="docsTableBody">
@@ -195,6 +196,7 @@
                         </tbody>
                     </table>
                 </div>
+                <div id="docsPagination" class="docs-pagination"></div>
             </section>
         </main>
     </div>
@@ -363,7 +365,7 @@
 
 <div class="toast-container" id="toastContainer"></div>
 
-<script type="module" src="/static/js/app.js?v=2"></script>
+<script type="module" src="/static/js/app.js?v=7"></script>
 
 </body>
 </html>

@@ -9,4 +9,6 @@ export const state = {
     pendingStatusUpdate: null,
     pendingFaseUpdate: null,
     searchTimeout: null,
+    currentPage: 1,
+    perPage: 50,
 };

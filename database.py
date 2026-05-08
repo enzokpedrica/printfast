@@ -28,8 +28,10 @@ def init_db():
             nome TEXT NOT NULL,
             usuario TEXT UNIQUE NOT NULL,
             senha_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
             ativo INTEGER DEFAULT 1,
-            criado_em TEXT DEFAULT CURRENT_TIMESTAMP
+            criado_em TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
     
@@ -79,12 +81,30 @@ def init_db():
         )
     """)
     
-    # Migration: coluna fase (caso banco já exista sem ela)
-    try:
-        cursor.execute("ALTER TABLE documentos_impressos ADD COLUMN fase TEXT DEFAULT NULL")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # coluna já existe
+    # Migrations para colunas adicionadas ao longo do tempo
+    migrations = [
+        "ALTER TABLE documentos_impressos ADD COLUMN fase TEXT DEFAULT NULL",
+        "ALTER TABLE usuarios ADD COLUMN role TEXT DEFAULT 'user'",
+        "ALTER TABLE usuarios ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
+    ]
+    for sql in migrations:
+        try:
+            cursor.execute(sql)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
+
+    # Tabela de tokens de reset de senha
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            token TEXT UNIQUE NOT NULL,
+            expires_at TEXT NOT NULL,
+            used_at TEXT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
 
     conn.commit()
     conn.close()
@@ -112,20 +132,20 @@ def verificar_login(usuario: str, senha: str) -> dict | None:
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, nome, usuario, senha_hash, ativo FROM usuarios WHERE usuario = ?",
+        "SELECT id, nome, usuario, senha_hash, ativo, role FROM usuarios WHERE usuario = ?",
         (usuario,)
     )
     row = cursor.fetchone()
     conn.close()
-    
+
     if row and row["ativo"] and check_password_hash(row["senha_hash"], senha):
-        return {"id": row["id"], "nome": row["nome"], "usuario": row["usuario"]}
+        return {"id": row["id"], "nome": row["nome"], "usuario": row["usuario"], "role": row["role"] or "user"}
     return None
 
 def listar_usuarios():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, nome, usuario, ativo, criado_em FROM usuarios")
+    cursor.execute("SELECT id, nome, usuario, role, ativo, criado_em FROM usuarios ORDER BY criado_em DESC")
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
@@ -143,6 +163,106 @@ def ativar_usuario(usuario_id: int):
     cursor.execute("UPDATE usuarios SET ativo = 1 WHERE id = ?", (usuario_id,))
     conn.commit()
     conn.close()
+
+def get_usuario(user_id: int) -> dict | None:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, nome, usuario, role, ativo, criado_em, updated_at FROM usuarios WHERE id = ?",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def criar_usuario_admin(nome: str, usuario: str, senha: str, role: str = "user") -> dict | None:
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        senha_hash = generate_password_hash(senha)
+        cursor.execute(
+            "INSERT INTO usuarios (nome, usuario, senha_hash, role) VALUES (?, ?, ?, ?)",
+            (nome, usuario, senha_hash, role)
+        )
+        user_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return get_usuario(user_id)
+    except sqlite3.IntegrityError:
+        return None
+
+def atualizar_usuario(user_id: int, nome: str = None, role: str = None, ativo: int = None) -> bool:
+    fields, values = [], []
+    if nome is not None:
+        fields.append("nome = ?"); values.append(nome)
+    if role is not None:
+        fields.append("role = ?"); values.append(role)
+    if ativo is not None:
+        fields.append("ativo = ?"); values.append(ativo)
+    if not fields:
+        return False
+    fields.append("updated_at = ?"); values.append(datetime.now().isoformat())
+    values.append(user_id)
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"UPDATE usuarios SET {', '.join(fields)} WHERE id = ?", values)
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
+
+def contar_admins_ativos() -> int:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM usuarios WHERE role = 'admin' AND ativo = 1")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+def gerar_token_reset(user_id: int, token: str, expires_at: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)",
+        (user_id, token, expires_at)
+    )
+    conn.commit()
+    conn.close()
+
+def get_token_reset(token: str) -> dict | None:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT t.*, u.usuario, u.nome
+        FROM password_reset_tokens t
+        JOIN usuarios u ON t.user_id = u.id
+        WHERE t.token = ?
+    """, (token,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+def usar_token_reset(token: str, nova_senha_hash: str) -> bool:
+    conn = get_connection()
+    cursor = conn.cursor()
+    agora = datetime.now().isoformat()
+    cursor.execute(
+        "SELECT user_id FROM password_reset_tokens WHERE token = ? AND used_at IS NULL",
+        (token,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+    user_id = row["user_id"]
+    cursor.execute("UPDATE password_reset_tokens SET used_at = ? WHERE token = ?", (agora, token))
+    cursor.execute("UPDATE usuarios SET senha_hash = ?, updated_at = ? WHERE id = ?", (nova_senha_hash, agora, user_id))
+    conn.commit()
+    conn.close()
+    return True
+
+def registrar_log_auditoria(acao: str, user_id: int, target_id: int = None, detalhes: str = None):
+    print(f"[AUDIT] {datetime.now().isoformat()} | user={user_id} | acao={acao} | target={target_id} | {detalhes or ''}")
 
 # ============================================
 # LOGS (compatibilidade)
@@ -214,7 +334,7 @@ def registrar_documento_impresso(
     conn.commit()
     conn.close()
 
-def listar_documentos(status: str = None, limite: int = 200):
+def listar_documentos(status: str = None, limite: int = 2000):
     conn = get_connection()
     cursor = conn.cursor()
     

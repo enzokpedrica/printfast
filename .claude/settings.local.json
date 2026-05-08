@@ -4,7 +4,10 @@
       "Bash(git stash:*)",
       "Bash(git pull:*)",
       "Bash(git checkout:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(nssm dump *)",
+      "PowerShell(nssm dump fastprint 2>&1)",
+      "PowerShell(Get-ChildItem \"HKLM:\\\\SYSTEM\\\\CurrentControlSet\\\\Services\" | Where-Object { $_.Name -match \"fast|print|linea|nssm\" } | Select-Object Name)"
     ]
   }
 }

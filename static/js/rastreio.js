@@ -1,11 +1,12 @@
-import { state } from './state.js';
-import { apiGetDocumentos, apiUpdateStatus, apiUpdateFase } from './api.js';
-import { showToast, closeModal } from './ui.js';
+import { state } from './state.js?v=7';
+import { apiGetDocumentos, apiUpdateStatus, apiUpdateFase } from './api.js?v=7';
+import { showToast, closeModal } from './ui.js?v=7';
 
 export async function loadDocs() {
     try {
-        const data = await apiGetDocumentos(500);
+        const data = await apiGetDocumentos(2000);
         state.allDocs = data.documentos;
+        state.currentPage = 1;
         updateSummary();
         renderDocs();
     } catch {
@@ -24,6 +25,7 @@ export function updateSummary() {
 export function setFilter(filter) {
     state.currentFilter     = filter;
     state.currentFaseFilter = null;
+    state.currentPage       = 1;
     document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
     document.getElementById(`f${filter}`).classList.add('active');
     renderDocs();
@@ -32,6 +34,7 @@ export function setFilter(filter) {
 export function setFaseFilter(fase) {
     state.currentFaseFilter = fase;
     state.currentFilter     = 'todos';
+    state.currentPage       = 1;
     document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
     const ids = { 'Lote Teste': 'ff-teste', 'Lote Piloto': 'ff-piloto', 'Lote Padrão': 'ff-padrao' };
     const el = document.getElementById(ids[fase]);
@@ -39,7 +42,13 @@ export function setFaseFilter(fase) {
     renderDocs();
 }
 
-export function filterDocs() { renderDocs(); }
+export function filterDocs() { state.currentPage = 1; renderDocs(); }
+
+export function goToPage(page) {
+    state.currentPage = page;
+    renderDocs();
+    document.getElementById('docsTableBody').closest('section').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
 
 export function renderDocs() {
     const search = document.getElementById('trackSearch').value.toLowerCase();
@@ -60,13 +69,22 @@ export function renderDocs() {
         );
     }
 
+    const totalDocs  = docs.length;
+    const totalPages = Math.max(1, Math.ceil(totalDocs / state.perPage));
+    if (state.currentPage > totalPages) state.currentPage = totalPages;
+    const start = (state.currentPage - 1) * state.perPage;
+    const pageDocs = docs.slice(start, start + state.perPage);
+
     const tbody = document.getElementById('docsTableBody');
-    if (docs.length === 0) {
+    if (totalDocs === 0) {
         tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 3rem; color: var(--text-muted);">Nenhum documento encontrado</td></tr>`;
+        renderPagination(0, 1, 1);
         return;
     }
 
-    tbody.innerHTML = docs.map(doc => {
+    renderPagination(totalDocs, state.currentPage, totalPages);
+
+    tbody.innerHTML = pageDocs.map(doc => {
         const statusHtml = {
             entregue: `<span class="status-pill status-entregue">📄 Entregue</span>`,
             recolhido: `<span class="status-pill status-recolhido">📦 Recolhido</span>`,
@@ -74,13 +92,10 @@ export function renderDocs() {
         }[doc.status] || doc.status;
 
         const faseHtml = buildFasePill(doc);
-        const data = new Date(doc.impresso_em).toLocaleString('pt-BR', {
-            day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
+        const data = new Date(doc.impresso_em).toLocaleDateString('pt-BR', {
+            day: '2-digit', month: '2-digit', year: '2-digit',
         });
 
-        const actionsHtml = doc.status === 'entregue'
-            ? `<button class="btn btn-success btn-xs" onclick="openStatusModal('${doc.codigo_rastreio}', 'baixado')">Dar Baixa</button>`
-            : `<span style="color: var(--text-muted); font-size: 0.8rem;">—</span>`;
 
         const tooltip = buildTooltip(doc);
 
@@ -93,9 +108,43 @@ export function renderDocs() {
             <td><span class="truncate" style="font-size:0.8rem; color: var(--text-secondary);" title="${doc.impresso_por_nome}${doc.computador ? ' (' + doc.computador + ')' : ''}">${doc.impresso_por_nome || '—'}</span></td>
             <td style="white-space: nowrap; font-size: 0.8rem; color: var(--text-secondary);">${data}</td>
             <td>${statusHtml}</td>
-            <td><div class="actions">${actionsHtml}</div></td>
         </tr>`;
     }).join('');
+}
+
+function renderPagination(total, current, totalPages) {
+    const el = document.getElementById('docsPagination');
+    if (!el) return;
+
+    const start = total === 0 ? 0 : (current - 1) * state.perPage + 1;
+    const end   = Math.min(current * state.perPage, total);
+
+    let pages = '';
+    const delta = 2;
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= current - delta && i <= current + delta)) {
+            pages += `<button class="page-btn ${i === current ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+        } else if (i === current - delta - 1 || i === current + delta + 1) {
+            pages += `<span class="page-ellipsis">…</span>`;
+        }
+    }
+
+    el.innerHTML = `
+        <span class="page-info">${total === 0 ? '0 docs' : `${start}–${end} de ${total}`}</span>
+        <div class="page-controls">
+            <button class="page-btn" onclick="goToPage(${current - 1})" ${current === 1 ? 'disabled' : ''}>‹</button>
+            ${pages}
+            <button class="page-btn" onclick="goToPage(${current + 1})" ${current === totalPages ? 'disabled' : ''}>›</button>
+        </div>
+        <select class="page-size-select" onchange="changePerPage(this.value)">
+            ${[25, 50, 100].map(n => `<option value="${n}" ${state.perPage === n ? 'selected' : ''}>${n} por pág.</option>`).join('')}
+        </select>`;
+}
+
+export function changePerPage(value) {
+    state.perPage    = parseInt(value);
+    state.currentPage = 1;
+    renderDocs();
 }
 
 function buildTooltip(doc) {

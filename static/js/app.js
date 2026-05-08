@@ -1,9 +1,9 @@
-import { state } from './state.js?v=2';
-import { apiLogin } from './api.js?v=2';
-import { getInitials, showToast, closeModal, showLogin, showApp } from './ui.js?v=2';
-import { loadDocs, setFilter, setFaseFilter, filterDocs, openFaseModal, selectFaseOption, confirmFaseUpdate, openStatusModal, confirmStatusUpdate } from './rastreio.js?v=2';
-import { loadDashboard } from './dashboard.js?v=2';
-import { searchProducts, selectProduct, clearSelection, loadPrinters, scanFolder, selectAll, deselectAll, toggleFile, printSelected, confirmPrint } from './impressao.js?v=2';
+import { state } from './state.js?v=7';
+import { apiLogin } from './api.js?v=7';
+import { getInitials, showToast, closeModal, showLogin, showApp } from './ui.js?v=7';
+import { loadDocs, setFilter, setFaseFilter, filterDocs, goToPage, changePerPage, openFaseModal, selectFaseOption, confirmFaseUpdate, openStatusModal, confirmStatusUpdate } from './rastreio.js?v=7';
+import { loadDashboard } from './dashboard.js?v=6';
+import { searchProducts, selectProduct, clearSelection, loadPrinters, scanFolder, selectAll, deselectAll, toggleFile, printSelected, confirmPrint } from './impressao.js?v=6';
 
 // ============================================
 // TABS
@@ -22,8 +22,10 @@ function switchTab(tab) {
 // ============================================
 function checkAuth() {
     // Login desativado temporariamente — ative quando quiser
-    state.currentUser = { id: 1, nome: 'Usuário Teste', usuario: 'teste' };
+    state.currentUser = { id: 1, nome: 'Usuário Teste', usuario: 'teste', role: 'admin' };
     state.authToken   = 'temp';
+    localStorage.setItem('fastprint_token', 'temp');
+    localStorage.setItem('fastprint_user', JSON.stringify(state.currentUser));
     _initApp();
 
     /*
@@ -116,6 +118,8 @@ window.loadDocs            = loadDocs;
 window.setFilter           = setFilter;
 window.setFaseFilter       = setFaseFilter;
 window.filterDocs          = filterDocs;
+window.goToPage            = goToPage;
+window.changePerPage       = changePerPage;
 window.openFaseModal       = openFaseModal;
 window.selectFaseOption    = selectFaseOption;
 window.confirmFaseUpdate   = confirmFaseUpdate;

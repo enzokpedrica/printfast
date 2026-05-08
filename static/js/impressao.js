@@ -1,7 +1,7 @@
-import { state } from './state.js?v=2';
-import { apiSearch, apiGetPrinters, apiListPdfs, apiPrint } from './api.js?v=2';
-import { showToast, closeModal } from './ui.js?v=2';
-import { loadDocs } from './rastreio.js?v=2';
+import { state } from './state.js?v=3';
+import { apiSearch, apiGetPrinters, apiListPdfs, apiPrint } from './api.js?v=3';
+import { showToast, closeModal } from './ui.js?v=3';
+import { loadDocs } from './rastreio.js?v=3';
 
 export async function searchProducts(query) {
     const container = document.getElementById('searchResults');
@@ -49,7 +49,7 @@ export async function loadPrinters() {
     try {
         const data = await apiGetPrinters();
         const select = document.getElementById('printerSelect');
-        select.innerHTML = '<option value="">Impressora Padrão do Sistema</option>';
+        select.innerHTML = '';
         data.printers.forEach(printer => {
             const option = document.createElement('option');
             option.value = printer;

@@ -62,6 +62,36 @@ DEFAULT_PRINTER = None  # ou "Nome da Impressora"
 
 ---
 
+## 🔐 Variáveis de Ambiente
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `FASTPRINT_ENV` | `production` | Modo de execução. Use `development` apenas em dev local. |
+
+**Em desenvolvimento local**, setar antes de rodar o servidor habilita o bypass de autenticação com o token `"temp"` (permite testar sem login real):
+
+```cmd
+set FASTPRINT_ENV=development
+python main.py
+```
+
+Ou via PowerShell:
+
+```powershell
+$env:FASTPRINT_ENV = "development"
+python main.py
+```
+
+**Em produção (NSSM)**, esta variável **não deve estar definida**. Serviços Windows via NSSM não herdam variáveis de ambiente do usuário — só enxergam variáveis de sistema ou o que for explicitamente configurado na aba "Environment" do `nssm edit fastprint`. Para confirmar que está limpo no servidor:
+
+```cmd
+nssm edit fastprint
+```
+
+Na aba **"Environment"**, verificar que `FASTPRINT_ENV` não aparece. Se aparecer, remover.
+
+---
+
 ## 🌐 Abrindo para a Equipe (Fase 2)
 
 Para permitir que outros acessem:

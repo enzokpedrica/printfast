@@ -284,14 +284,13 @@ body {
 .doc-table tr:hover td { background: #ffffff05; }
 
 /* larguras das colunas */
-.col-codigo   { width: 140px; }
-.col-produto  { width: auto; }
-.col-arquivo  { width: 22%; }
+.col-codigo   { width: 180px; }
+.col-produto  { width: 22%; }
+.col-arquivo  { width: auto; }
 .col-fase     { width: 130px; }
 .col-impresso { width: 130px; }
-.col-data     { width: 120px; }
-.col-status   { width: 120px; }
-.col-acoes    { width: 140px; }
+.col-data     { width: 85px; }
+.col-status   { width: 100px; }
 
 .doc-table .mono { font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; }
 .doc-table .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
@@ -395,6 +394,29 @@ body {
 
 .modal-actions { display: flex; gap: 1rem; justify-content: flex-end; }
 .modal-actions .btn { min-width: 120px; justify-content: center; }
+
+/* ---- PAGINAÇÃO ---- */
+.docs-pagination {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 1rem; border-top: 1px solid var(--border);
+    flex-wrap: wrap; gap: 0.5rem;
+}
+.page-info { font-size: 0.85rem; color: var(--text-secondary); }
+.page-controls { display: flex; gap: 0.25rem; align-items: center; }
+.page-btn {
+    min-width: 32px; height: 32px; padding: 0 0.5rem;
+    border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-tertiary); color: var(--text-primary);
+    font-size: 0.85rem; cursor: pointer; transition: all 0.15s;
+}
+.page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.page-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.page-btn:disabled { opacity: 0.35; cursor: default; }
+.page-ellipsis { padding: 0 0.25rem; color: var(--text-muted); font-size: 0.85rem; }
+.page-size-select {
+    font-size: 0.85rem; padding: 0.25rem 0.5rem; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); cursor: pointer;
+}
 
 /* ---- CONFIRM STATUS MODAL ---- */
 .status-modal-body { text-align: center; padding: 1rem 0 1.5rem; }
