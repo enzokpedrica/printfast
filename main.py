@@ -806,9 +806,9 @@ if __name__ == "__main__":
     print("\n" + "="*50)
     print("🖨️  FastPrint - Linea Brasil")
     print("="*50)
-    print(f"🌐 Acesse: http://localhost:8000")
+    print(f"🌐 Acesse: http://localhost:8080")
     print(f"\n💡 Para a equipe acessar, use seu IP local:")
-    print(f"   http://SEU_IP:8000")
+    print(f"   http://SEU_IP:8080")
     print("\n" + "="*50 + "\n")
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
