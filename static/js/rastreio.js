@@ -1,6 +1,6 @@
-import { state } from './state.js?v=7';
-import { apiGetDocumentos, apiUpdateStatus, apiUpdateFase } from './api.js?v=7';
-import { showToast, closeModal } from './ui.js?v=7';
+import { state } from './state.js?v=8';
+import { apiGetDocumentos, apiUpdateStatus, apiUpdateFase } from './api.js?v=8';
+import { showToast, closeModal } from './ui.js?v=8';
 
 export async function loadDocs() {
     try {
@@ -105,7 +105,7 @@ export function renderDocs() {
             <td><span class="truncate" title="${doc.produto}">${doc.produto}</span></td>
             <td><span class="truncate" title="${doc.arquivo}" style="font-size:0.8rem; color: var(--text-secondary);">${doc.arquivo}</span></td>
             <td>${faseHtml}</td>
-            <td><span class="truncate" style="font-size:0.8rem; color: var(--text-secondary);" title="${doc.impresso_por_nome}${doc.computador ? ' (' + doc.computador + ')' : ''}">${doc.impresso_por_nome || '—'}</span></td>
+            <td><span class="truncate" style="font-size:0.8rem; color: var(--text-secondary);" title="${doc.computador || ''}">${doc.computador || doc.impresso_por_nome || '—'}</span></td>
             <td style="white-space: nowrap; font-size: 0.8rem; color: var(--text-secondary);">${data}</td>
             <td>${statusHtml}</td>
         </tr>`;
@@ -207,7 +207,7 @@ export async function confirmFaseUpdate() {
     closeModal('faseModal');
 
     try {
-        const data = await apiUpdateFase(state.pendingFaseUpdate.codigo, fase, porProduto, state.authToken);
+        const data = await apiUpdateFase(state.pendingFaseUpdate.codigo, fase, porProduto);
         if (data.success) {
             const msg = porProduto
                 ? `Fase "${fase}" aplicada a ${data.affected} documento(s)`
@@ -246,8 +246,7 @@ export async function confirmStatusUpdate() {
     try {
         const data = await apiUpdateStatus(
             state.pendingStatusUpdate.codigo,
-            state.pendingStatusUpdate.novoStatus,
-            state.authToken
+            state.pendingStatusUpdate.novoStatus
         );
         if (data.success) {
             const labels = { recolhido: 'Documento marcado como recolhido!', baixado: 'Baixa registrada com sucesso!' };

@@ -9,43 +9,11 @@
 </head>
 <body>
 
-<!-- LOGIN -->
-<div class="login-screen" id="loginScreen">
-    <div class="login-box">
-        <div class="logo">
-            <div class="logo-icon">🖨️</div>
-            <div class="logo-text"><h1>FastPrint</h1><span>Linea Brasil</span></div>
-        </div>
-        <h2>Acesso ao Sistema</h2>
-        <div class="login-error" id="loginError">Usuário ou senha inválidos</div>
-        <form class="login-form" onsubmit="handleLogin(event)">
-            <div class="input-group">
-                <label>Usuário</label>
-                <input type="text" id="loginUsuario" placeholder="seu.usuario" required>
-            </div>
-            <div class="input-group">
-                <label>Senha</label>
-                <input type="password" id="loginSenha" placeholder="••••••••" required>
-            </div>
-            <button type="submit" class="btn btn-primary" id="loginBtn">Entrar</button>
-        </form>
-    </div>
-</div>
-
-<!-- APP -->
-<div id="appContainer" style="display: none;">
+<div id="appContainer">
     <header class="header">
         <div class="logo">
             <div class="logo-icon">🖨️</div>
             <div class="logo-text"><h1>FastPrint</h1><span>Linea Brasil</span></div>
-        </div>
-        <div style="display:flex; align-items:center; gap:1rem;">
-            <a id="adminLink" href="/users" style="display:none; align-items:center; gap:0.4rem; padding:0.4rem 0.85rem; border:1px solid var(--border); border-radius:100px; font-size:0.8rem; color:var(--text-secondary); text-decoration:none; transition:all 0.2s;" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⚙️ Usuários</a>
-            <div class="user-badge" onclick="handleLogout()">
-                <div class="user-avatar" id="userAvatar">EP</div>
-                <span id="userName">Usuário</span>
-                <span style="margin-left: 0.5rem; opacity: 0.5;">✕</span>
-            </div>
         </div>
     </header>
 
@@ -186,7 +154,7 @@
                                 <th>Produto</th>
                                 <th>Arquivo</th>
                                 <th>Fase</th>
-                                <th>Impresso por</th>
+                                <th>Computador</th>
                                 <th>Data</th>
                                 <th>Status</th>
                             </tr>
@@ -263,7 +231,7 @@
             <!-- Linha 2: Usuários + Atividade recente -->
             <div class="dash-grid">
                 <div class="dash-card">
-                    <h3>Impressões por Usuário</h3>
+                    <h3>Impressões por Computador</h3>
                     <div id="dashUsuarioBars"><div class="dash-empty">Sem dados</div></div>
                 </div>
                 <div class="dash-card">
@@ -365,7 +333,7 @@
 
 <div class="toast-container" id="toastContainer"></div>
 
-<script type="module" src="/static/js/app.js?v=7"></script>
+<script type="module" src="/static/js/app.js?v=8"></script>
 
 </body>
 </html>

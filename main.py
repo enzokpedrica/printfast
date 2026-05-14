@@ -3,10 +3,9 @@ Sistema de Impressão em Lote - Linea Brasil
 Fase 1: Script local com interface web
 """
 
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, FileResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from pathlib import Path
 import subprocess
@@ -14,19 +13,12 @@ import platform
 import os
 import socket
 import tempfile
-import secrets
 from typing import Optional
-from datetime import datetime, timedelta
-import jwt
-from werkzeug.security import generate_password_hash
+from datetime import datetime
 from database import (
-    verificar_login, registrar_log, criar_usuario, listar_usuarios, listar_logs,
-    gerar_codigo_rastreio, registrar_documento_impresso,
+    registrar_log, gerar_codigo_rastreio, registrar_documento_impresso,
     listar_documentos, atualizar_status_documento, buscar_documento,
-    atualizar_fase_documento,
-    get_usuario, criar_usuario_admin, atualizar_usuario,
-    contar_admins_ativos, gerar_token_reset, get_token_reset,
-    usar_token_reset, registrar_log_auditoria,
+    atualizar_fase_documento, listar_logs, get_or_create_sistema_user,
 )
 
 # ============================================
@@ -39,29 +31,7 @@ IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0",
 
 IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM", "REVISAO", "REVISÃO"]
 
-SECRET_KEY = "fastprint-linea-2025-sua-chave-secreta"
-
 app = FastAPI(title="FastPrint - Linea Brasil")
-
-_bearer = HTTPBearer(auto_error=False)
-
-_DEV_MODE = os.getenv("FASTPRINT_ENV", "production") == "development"
-
-def get_current_admin(credentials: HTTPAuthorizationCredentials = Depends(_bearer)) -> dict:
-    if not credentials:
-        raise HTTPException(status_code=401, detail="Autenticação necessária")
-    token = credentials.credentials
-    if _DEV_MODE and token == "temp":
-        return {"user_id": 1, "usuario": "teste", "nome": "Usuário Teste", "role": "admin"}
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        if payload.get("role") != "admin":
-            raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expirado")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Token inválido")
 
 # ============================================
 # CONFIGURAÇÕES
@@ -87,15 +57,6 @@ class PrintRequest(BaseModel):
 class FolderRequest(BaseModel):
     path: str
 
-class LoginRequest(BaseModel):
-    usuario: str
-    senha: str
-
-class NovoUsuarioRequest(BaseModel):
-    nome: str
-    usuario: str
-    senha: str
-
 class StatusUpdateRequest(BaseModel):
     codigo_rastreio: str
     novo_status: str  # "baixado"
@@ -105,27 +66,11 @@ class FaseUpdateRequest(BaseModel):
     fase: str  # "Lote Teste", "Lote Piloto", "Lote Padrão"
     por_produto: bool = False
 
-class UserCreateRequest(BaseModel):
-    nome: str
-    usuario: str
-    senha: str
-    role: str = "user"
-
-class UserUpdateRequest(BaseModel):
-    nome: Optional[str] = None
-    role: Optional[str] = None
-    ativo: Optional[int] = None
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    nova_senha: str
-
 # ============================================
 # FUNÇÕES AUXILIARES
 # ============================================
 
 def get_hostname() -> str:
-    """Retorna o nome do computador"""
     try:
         return socket.gethostname()
     except:
@@ -375,42 +320,6 @@ def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
 # ROTAS DA API
 # ============================================
 
-# --- AUTENTICAÇÃO ---
-
-@app.post("/api/login")
-async def login(request: LoginRequest):
-    user = verificar_login(request.usuario, request.senha)
-    if not user:
-        raise HTTPException(status_code=401, detail="Usuário ou senha inválidos")
-
-    token = jwt.encode(
-        {"user_id": user["id"], "usuario": user["usuario"], "nome": user["nome"],
-         "role": user.get("role", "user"),
-         "exp": datetime.utcnow() + timedelta(hours=8)},
-        SECRET_KEY, algorithm="HS256"
-    )
-    return {"success": True, "token": token, "user": user}
-
-@app.get("/api/verificar-token")
-async def verificar_token(token: str):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return {"valid": True, "user": payload}
-    except jwt.ExpiredSignatureError:
-        return {"valid": False, "error": "Token expirado"}
-    except jwt.InvalidTokenError:
-        return {"valid": False, "error": "Token inválido"}
-
-@app.post("/api/usuarios")
-async def criar_novo_usuario(request: NovoUsuarioRequest):
-    if criar_usuario(request.nome, request.usuario, request.senha):
-        return {"success": True, "message": f"Usuário {request.usuario} criado"}
-    raise HTTPException(status_code=400, detail="Usuário já existe")
-
-@app.get("/api/usuarios")
-async def get_usuarios():
-    return {"usuarios": listar_usuarios()}
-
 @app.get("/api/logs")
 async def get_logs(limite: int = 100):
     return {"logs": listar_logs(limite)}
@@ -419,44 +328,30 @@ async def get_logs(limite: int = 100):
 
 @app.get("/api/documentos")
 async def get_documentos(status: str = None, limite: int = 200):
-    """Lista documentos impressos com filtro opcional de status"""
     docs = listar_documentos(status=status, limite=limite)
     return {"documentos": docs, "total": len(docs)}
 
 @app.post("/api/documentos/status")
-async def update_status(request: StatusUpdateRequest, authorization: str = Header(default=None)):
-    """Atualiza status de um documento (entregue → baixado)"""
-    usuario_id = _get_user_id(authorization)
-    if not usuario_id:
-        raise HTTPException(status_code=401, detail="Não autorizado")
-
+async def update_status(request: StatusUpdateRequest):
+    usuario_id = get_or_create_sistema_user()
     ok = atualizar_status_documento(request.codigo_rastreio, request.novo_status, usuario_id)
     if not ok:
         raise HTTPException(status_code=400, detail="Documento não encontrado ou status inválido para esta transição")
-
     doc = buscar_documento(request.codigo_rastreio)
     return {"success": True, "documento": doc}
 
 @app.post("/api/documentos/fase")
-async def update_fase(request: FaseUpdateRequest, authorization: str = Header(default=None)):
-    """Atualiza a fase de um documento (opcionalmente para todos do mesmo produto)"""
-    usuario_id = _get_user_id(authorization)
-    if not usuario_id:
-        raise HTTPException(status_code=401, detail="Não autorizado")
-
+async def update_fase(request: FaseUpdateRequest):
     fases_validas = ["Lote Teste", "Lote Piloto", "Lote Padrão"]
     if request.fase not in fases_validas:
         raise HTTPException(status_code=400, detail="Fase inválida")
-
     affected = atualizar_fase_documento(request.codigo_rastreio, request.fase, request.por_produto)
     if affected == 0:
         raise HTTPException(status_code=404, detail="Documento não encontrado")
-
     return {"success": True, "affected": affected}
 
 @app.get("/api/documentos/{codigo}")
 async def get_documento(codigo: str):
-    """Busca um documento pelo código de rastreio"""
     doc = buscar_documento(codigo)
     if not doc:
         raise HTTPException(status_code=404, detail="Documento não encontrado")
@@ -484,33 +379,8 @@ async def list_pdfs(request: FolderRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _get_user_id(authorization: str) -> int | None:
-    """Extrai user_id do token JWT"""
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-    token = authorization.split(" ")[1]
-    if _DEV_MODE and token == "temp":
-        return 1
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return payload["user_id"]
-    except:
-        return None
-
-def _get_user_payload(authorization: str) -> dict | None:
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-    token = authorization.split(" ")[1]
-    if _DEV_MODE and token == "temp":
-        return {"user_id": 1, "usuario": "teste", "nome": "Usuário Teste", "role": "admin"}
-    try:
-        return jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-    except:
-        return None
-
-
 @app.post("/api/print")
-async def print_files(request: PrintRequest, authorization: str = Header(default=None)):
+async def print_files(request: PrintRequest):
     """Imprime PDFs selecionados — com carimbo de rastreio e registro no banco"""
     try:
         if request.selected_files:
@@ -521,11 +391,9 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
         if not pdfs:
             return {"success": False, "message": "Nenhum PDF para imprimir"}
 
-        payload    = _get_user_payload(authorization)
-        usuario_id = payload["user_id"] if payload else 1
-        usuario_nome = payload["nome"] if payload else None
-        computador = get_hostname()
-        produto = Path(request.folder_path).name
+        usuario_id   = get_or_create_sistema_user()
+        computador   = get_hostname()
+        produto      = Path(request.folder_path).name
 
         results = []
         success_count = 0
@@ -533,15 +401,13 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
         arquivos_tmp = []
 
         for pdf in pdfs:
-            # Gera código de rastreio único por arquivo
             codigo = gerar_codigo_rastreio(computador)
 
-            # Tenta carimbar o PDF
-            pdf_para_imprimir = stamp_pdf(pdf["path"], codigo, request.fase, usuario_nome)
+            pdf_para_imprimir = stamp_pdf(pdf["path"], codigo, request.fase, computador)
             usou_tmp = pdf_para_imprimir is not None
 
             if not usou_tmp:
-                pdf_para_imprimir = pdf["path"]  # fallback sem carimbo
+                pdf_para_imprimir = pdf["path"]
             else:
                 arquivos_tmp.append(pdf_para_imprimir)
 
@@ -552,7 +418,6 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
             if result["success"]:
                 success_count += 1
                 codigos_gerados.append(codigo)
-                # Registra no banco de rastreio
                 registrar_documento_impresso(
                     codigo_rastreio=codigo,
                     produto=produto,
@@ -564,14 +429,12 @@ async def print_files(request: PrintRequest, authorization: str = Header(default
                     fase=request.fase
                 )
 
-        # Limpa arquivos temporários
         for tmp in arquivos_tmp:
             try:
                 os.unlink(tmp)
             except:
                 pass
 
-        # Registra log geral (compatibilidade)
         try:
             arquivos_ok = [r["file"] for r in results if r.get("success")]
             registrar_log(
@@ -676,138 +539,16 @@ async def browse_folder(path: str = ""):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# ============================================
-# PÁGINAS STANDALONE
-# ============================================
-
-@app.get("/users", response_class=HTMLResponse)
-async def users_page():
-    return FileResponse("static/users.html")
-
-@app.get("/reset-password", response_class=HTMLResponse)
-async def reset_password_page():
-    return FileResponse("static/reset-password.html")
-
-# ============================================
-# GESTÃO DE USUÁRIOS (admin)
-# ============================================
-
-@app.get("/api/users")
-async def list_users(admin: dict = Depends(get_current_admin)):
-    return {"users": listar_usuarios()}
-
-@app.get("/api/users/{user_id}")
-async def get_user(user_id: int, admin: dict = Depends(get_current_admin)):
-    user = get_usuario(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    return user
-
-@app.post("/api/users")
-async def create_user(request: UserCreateRequest, admin: dict = Depends(get_current_admin)):
-    if request.role not in ("admin", "user"):
-        raise HTTPException(status_code=400, detail="Role inválida. Use 'admin' ou 'user'")
-    if len(request.senha) < 8:
-        raise HTTPException(status_code=400, detail="Senha deve ter no mínimo 8 caracteres")
-    user = criar_usuario_admin(request.nome, request.usuario, request.senha, request.role)
-    if not user:
-        raise HTTPException(status_code=400, detail="Nome de usuário já existe")
-    registrar_log_auditoria("create_user", admin["user_id"], user["id"], f"usuario={request.usuario}")
-    return {"success": True, "user": user}
-
-@app.put("/api/users/{user_id}")
-async def update_user(user_id: int, request: UserUpdateRequest, admin: dict = Depends(get_current_admin)):
-    user = get_usuario(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    if request.role and request.role not in ("admin", "user"):
-        raise HTTPException(status_code=400, detail="Role inválida. Use 'admin' ou 'user'")
-    if request.role == "user" and user["role"] == "admin" and contar_admins_ativos() <= 1:
-        raise HTTPException(status_code=400, detail="Não é possível rebaixar o último administrador ativo")
-    ok = atualizar_usuario(user_id, nome=request.nome, role=request.role, ativo=request.ativo)
-    if not ok:
-        raise HTTPException(status_code=400, detail="Nenhum campo para atualizar")
-    registrar_log_auditoria("update_user", admin["user_id"], user_id)
-    return {"success": True, "user": get_usuario(user_id)}
-
-@app.delete("/api/users/{user_id}")
-async def deactivate_user(user_id: int, admin: dict = Depends(get_current_admin)):
-    if user_id == admin["user_id"]:
-        raise HTTPException(status_code=400, detail="Não é possível desativar a própria conta")
-    user = get_usuario(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    if user["role"] == "admin" and contar_admins_ativos() <= 1:
-        raise HTTPException(status_code=400, detail="Não é possível desativar o último administrador ativo")
-    atualizar_usuario(user_id, ativo=0)
-    registrar_log_auditoria("deactivate_user", admin["user_id"], user_id, f"usuario={user['usuario']}")
-    return {"success": True}
-
-@app.post("/api/users/{user_id}/reset-link")
-async def generate_reset_link(user_id: int, admin: dict = Depends(get_current_admin)):
-    user = get_usuario(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    token = secrets.token_urlsafe(32)
-    expires_at = (datetime.utcnow() + timedelta(hours=24)).isoformat()
-    gerar_token_reset(user_id, token, expires_at)
-    registrar_log_auditoria("generate_reset_link", admin["user_id"], user_id, f"usuario={user['usuario']}")
-    return {"success": True, "token": token, "expires_in": "24 horas"}
-
-# ============================================
-# RESET DE SENHA (público)
-# ============================================
-
-@app.get("/api/auth/validate-reset-token")
-async def validate_reset_token(token: str):
-    token_data = get_token_reset(token)
-    if not token_data:
-        return {"valid": False, "reason": "Token inválido"}
-    if token_data["used_at"]:
-        return {"valid": False, "reason": "Este link já foi utilizado"}
-    if datetime.fromisoformat(token_data["expires_at"]) < datetime.utcnow():
-        return {"valid": False, "reason": "Link expirado. Solicite um novo ao administrador"}
-    return {"valid": True, "nome": token_data["nome"]}
-
-@app.post("/api/auth/reset-password")
-async def reset_password(request: ResetPasswordRequest):
-    if len(request.nova_senha) < 8:
-        raise HTTPException(status_code=400, detail="Senha deve ter no mínimo 8 caracteres")
-    token_data = get_token_reset(request.token)
-    if not token_data:
-        raise HTTPException(status_code=400, detail="Token inválido ou não encontrado")
-    if token_data["used_at"]:
-        raise HTTPException(status_code=400, detail="Este link já foi utilizado")
-    if datetime.fromisoformat(token_data["expires_at"]) < datetime.utcnow():
-        raise HTTPException(status_code=400, detail="Link expirado. Solicite um novo ao administrador")
-    nova_hash = generate_password_hash(request.nova_senha)
-    ok = usar_token_reset(request.token, nova_hash)
-    if not ok:
-        raise HTTPException(status_code=400, detail="Erro ao redefinir senha")
-    return {"success": True, "message": "Senha redefinida com sucesso"}
-
-@app.post("/api/setup/first-admin")
-async def setup_first_admin(request: UserCreateRequest):
-    """Cria o primeiro admin. Bloqueado se já existir algum admin ativo."""
-    if contar_admins_ativos() > 0:
-        raise HTTPException(status_code=403, detail="Já existe um administrador no sistema")
-    if len(request.senha) < 8:
-        raise HTTPException(status_code=400, detail="Senha deve ter no mínimo 8 caracteres")
-    user = criar_usuario_admin(request.nome, request.usuario, request.senha, "admin")
-    if not user:
-        raise HTTPException(status_code=400, detail="Nome de usuário já existe")
-    return {"success": True, "message": "Administrador criado com sucesso", "user": user}
-
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 if __name__ == "__main__":
     import uvicorn
     print("\n" + "="*50)
-    print("🖨️  FastPrint - Linea Brasil")
+    print("FastPrint - Linea Brasil")
     print("="*50)
-    print(f"🌐 Acesse: http://localhost:8080")
-    print(f"\n💡 Para a equipe acessar, use seu IP local:")
+    print(f"Acesse: http://localhost:8080")
+    print(f"\nPara a equipe acessar, use seu IP local:")
     print(f"   http://SEU_IP:8080")
     print("\n" + "="*50 + "\n")
 

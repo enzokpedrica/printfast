@@ -11,7 +11,14 @@
       "Bash(Get-ChildItem -Path \"c:\\\\git\\\\printfast\" -Recurse -Force)",
       "Bash(Select-Object -First 50)",
       "Bash(Format-Table FullName, PSIsContainer)",
-      "Bash(Get-ChildItem -Path \"c:\\\\git\\\\printfast\" -Force)"
+      "Bash(Get-ChildItem -Path \"c:\\\\git\\\\printfast\" -Force)",
+      "Bash(Get-ChildItem -Path \"c:\\\\git\\\\printfast\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(Remove-Item \"c:\\\\git\\\\printfast\\\\static\\\\users.html\" -Force)",
+      "Bash(Remove-Item \"c:\\\\git\\\\printfast\\\\static\\\\js\\\\users.js\" -Force)",
+      "Bash(Remove-Item \"c:\\\\git\\\\printfast\\\\static\\\\reset-password.html\" -Force)",
+      "Bash(Remove-Item \"c:\\\\git\\\\printfast\\\\static\\\\js\\\\reset-password.js\" -Force)"
     ]
   }
 }

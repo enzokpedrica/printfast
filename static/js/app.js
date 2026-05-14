@@ -1,9 +1,8 @@
-import { state } from './state.js?v=7';
-import { apiLogin } from './api.js?v=7';
-import { getInitials, showToast, closeModal, showLogin, showApp } from './ui.js?v=7';
-import { loadDocs, setFilter, setFaseFilter, filterDocs, goToPage, changePerPage, openFaseModal, selectFaseOption, confirmFaseUpdate, openStatusModal, confirmStatusUpdate } from './rastreio.js?v=7';
+import { state } from './state.js?v=8';
+import { showToast, closeModal } from './ui.js?v=8';
+import { loadDocs, setFilter, setFaseFilter, filterDocs, goToPage, changePerPage, openFaseModal, selectFaseOption, confirmFaseUpdate, openStatusModal, confirmStatusUpdate } from './rastreio.js?v=8';
 import { loadDashboard } from './dashboard.js?v=6';
-import { searchProducts, selectProduct, clearSelection, loadPrinters, scanFolder, selectAll, deselectAll, toggleFile, printSelected, confirmPrint } from './impressao.js?v=6';
+import { searchProducts, selectProduct, clearSelection, loadPrinters, scanFolder, selectAll, deselectAll, toggleFile, printSelected, confirmPrint } from './impressao.js?v=8';
 
 // ============================================
 // TABS
@@ -18,30 +17,9 @@ function switchTab(tab) {
 }
 
 // ============================================
-// AUTH
+// INIT
 // ============================================
-function checkAuth() {
-    // Login desativado temporariamente — ative quando quiser
-    state.currentUser = { id: 1, nome: 'Usuário Teste', usuario: 'teste', role: 'admin' };
-    state.authToken   = 'temp';
-    localStorage.setItem('fastprint_token', 'temp');
-    localStorage.setItem('fastprint_user', JSON.stringify(state.currentUser));
-    _initApp();
-
-    /*
-    state.authToken = localStorage.getItem('fastprint_token');
-    const userStr   = localStorage.getItem('fastprint_user');
-    if (state.authToken && userStr) {
-        state.currentUser = JSON.parse(userStr);
-        _initApp();
-    } else {
-        showLogin();
-    }
-    */
-}
-
-function _initApp() {
-    showApp(state.currentUser);
+function initApp() {
     loadPrinters();
     document.getElementById('folderPath').addEventListener('keypress', e => {
         if (e.key === 'Enter') scanFolder();
@@ -53,54 +31,10 @@ function _initApp() {
     loadDocs();
 }
 
-async function handleLogin(e) {
-    e.preventDefault();
-    const btn     = document.getElementById('loginBtn');
-    const errorEl = document.getElementById('loginError');
-    btn.disabled = true;
-    btn.textContent = 'Entrando...';
-    errorEl.classList.remove('show');
-
-    try {
-        const { ok, data } = await apiLogin(
-            document.getElementById('loginUsuario').value,
-            document.getElementById('loginSenha').value
-        );
-        if (ok && data.success) {
-            state.authToken   = data.token;
-            state.currentUser = data.user;
-            localStorage.setItem('fastprint_token', state.authToken);
-            localStorage.setItem('fastprint_user', JSON.stringify(state.currentUser));
-            _initApp();
-        } else {
-            errorEl.textContent = data.detail || 'Usuário ou senha inválidos';
-            errorEl.classList.add('show');
-        }
-    } catch {
-        errorEl.textContent = 'Erro ao conectar com o servidor';
-        errorEl.classList.add('show');
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Entrar';
-    }
-}
-
-function handleLogout() {
-    if (confirm('Deseja sair do sistema?')) {
-        localStorage.removeItem('fastprint_token');
-        localStorage.removeItem('fastprint_user');
-        state.authToken   = null;
-        state.currentUser = null;
-        showLogin();
-    }
-}
-
 // ============================================
 // EXPOR FUNÇÕES AO ESCOPO GLOBAL (onclick no HTML)
 // ============================================
 window.switchTab           = switchTab;
-window.handleLogin         = handleLogin;
-window.handleLogout        = handleLogout;
 window.closeModal          = closeModal;
 
 // impressao
@@ -126,7 +60,4 @@ window.confirmFaseUpdate   = confirmFaseUpdate;
 window.openStatusModal     = openStatusModal;
 window.confirmStatusUpdate = confirmStatusUpdate;
 
-// ============================================
-// INIT
-// ============================================
-document.addEventListener('DOMContentLoaded', checkAuth);
+document.addEventListener('DOMContentLoaded', initApp);

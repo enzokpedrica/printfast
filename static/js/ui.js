@@ -1,8 +1,4 @@
-// Utilitários de DOM: toasts, modais, iniciais
-
-export function getInitials(nome) {
-    return nome.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase();
-}
+// Utilitários de DOM: toasts, modais
 
 export function showToast(msg, type = 'success') {
     const container = document.getElementById('toastContainer');
@@ -18,18 +14,4 @@ export function showToast(msg, type = 'success') {
 
 export function closeModal(id) {
     document.getElementById(id).classList.remove('show');
-}
-
-export function showLogin() {
-    document.getElementById('loginScreen').style.display = 'flex';
-    document.getElementById('appContainer').style.display = 'none';
-}
-
-export function showApp(user) {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('appContainer').style.display = 'block';
-    document.getElementById('userName').textContent = user.nome;
-    document.getElementById('userAvatar').textContent = getInitials(user.nome);
-    const adminLink = document.getElementById('adminLink');
-    if (adminLink) adminLink.style.display = user.role === 'admin' ? 'flex' : 'none';
 }

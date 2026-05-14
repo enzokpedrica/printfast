@@ -20,22 +20,13 @@ export async function apiListPdfs(path) {
     return response.json();
 }
 
-export async function apiPrint(folder_path, printer, selected_files, token, fase) {
+export async function apiPrint(folder_path, printer, selected_files, fase) {
     const response = await fetch('/api/print', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder_path, printer, selected_files, fase: fase || null }),
     });
     return response.json();
-}
-
-export async function apiLogin(usuario, senha) {
-    const response = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usuario, senha }),
-    });
-    return { ok: response.ok, data: await response.json() };
 }
 
 export async function apiGetDocumentos(limite = 500) {
@@ -43,19 +34,19 @@ export async function apiGetDocumentos(limite = 500) {
     return response.json();
 }
 
-export async function apiUpdateStatus(codigo_rastreio, novo_status, token) {
+export async function apiUpdateStatus(codigo_rastreio, novo_status) {
     const response = await fetch('/api/documentos/status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ codigo_rastreio, novo_status }),
     });
     return response.json();
 }
 
-export async function apiUpdateFase(codigo_rastreio, fase, por_produto, token) {
+export async function apiUpdateFase(codigo_rastreio, fase, por_produto) {
     const response = await fetch('/api/documentos/fase', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ codigo_rastreio, fase, por_produto }),
     });
     return response.json();

@@ -345,11 +345,11 @@ def listar_documentos(status: str = None, limite: int = 2000):
             u2.nome as recolhido_por_nome,
             u3.nome as baixado_por_nome
         FROM documentos_impressos d
-        JOIN usuarios u1 ON d.impresso_por_id = u1.id
+        LEFT JOIN usuarios u1 ON d.impresso_por_id = u1.id
         LEFT JOIN usuarios u2 ON d.recolhido_por_id = u2.id
         LEFT JOIN usuarios u3 ON d.baixado_por_id = u3.id
     """
-    
+
     if status:
         query += " WHERE d.status = ?"
         cursor.execute(query + " ORDER BY d.impresso_em DESC LIMIT ?", (status, limite))
@@ -391,7 +391,7 @@ def buscar_documento(codigo_rastreio: str) -> dict | None:
             u2.nome as recolhido_por_nome,
             u3.nome as baixado_por_nome
         FROM documentos_impressos d
-        JOIN usuarios u1 ON d.impresso_por_id = u1.id
+        LEFT JOIN usuarios u1 ON d.impresso_por_id = u1.id
         LEFT JOIN usuarios u2 ON d.recolhido_por_id = u2.id
         LEFT JOIN usuarios u3 ON d.baixado_por_id = u3.id
         WHERE d.codigo_rastreio = ?
@@ -420,6 +420,23 @@ def atualizar_fase_documento(codigo_rastreio: str, fase: str, por_produto: bool 
     conn.commit()
     conn.close()
     return affected
+
+def get_or_create_sistema_user() -> int:
+    """Retorna o ID do usuário 'sistema', criando-o se não existir."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM usuarios WHERE usuario = 'sistema'")
+    row = cursor.fetchone()
+    if row:
+        conn.close()
+        return row["id"]
+    cursor.execute(
+        "INSERT INTO usuarios (nome, usuario, senha_hash, role) VALUES ('Sistema', 'sistema', '', 'user')"
+    )
+    user_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return user_id
 
 # Inicializa o banco quando o módulo é importado
 init_db()

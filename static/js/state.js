@@ -1,7 +1,5 @@
 // Estado global compartilhado entre módulos
 export const state = {
-    authToken: null,
-    currentUser: null,
     allDocs: [],
     currentFiles: [],
     currentFilter: 'todos',

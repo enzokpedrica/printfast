@@ -1,7 +1,7 @@
-import { state } from './state.js?v=3';
-import { apiSearch, apiGetPrinters, apiListPdfs, apiPrint } from './api.js?v=3';
-import { showToast, closeModal } from './ui.js?v=3';
-import { loadDocs } from './rastreio.js?v=3';
+import { state } from './state.js?v=8';
+import { apiSearch, apiGetPrinters, apiListPdfs, apiPrint } from './api.js?v=8';
+import { showToast, closeModal } from './ui.js?v=8';
+import { loadDocs } from './rastreio.js?v=8';
 
 export async function searchProducts(query) {
     const container = document.getElementById('searchResults');
@@ -152,7 +152,7 @@ export async function confirmPrint() {
     document.getElementById('progressContainer').classList.add('active');
 
     try {
-        const data = await apiPrint(path, printer, selected.map(f => f.path), state.authToken, fase);
+        const data = await apiPrint(path, printer, selected.map(f => f.path), fase);
         let idx = 0;
         state.currentFiles.forEach((file, i) => {
             if (file.selected && data.results[idx]) {
