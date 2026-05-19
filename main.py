@@ -71,8 +71,6 @@ else:
         r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
     ]
 
-logger.info(f"Iniciando processo de impressão: {SEARCH_PATHS}")
-exit()
 
 DEFAULT_PRINTER: Optional[str] = None
 
