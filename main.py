@@ -20,6 +20,16 @@ from database import (
     listar_documentos, atualizar_status_documento, buscar_documento,
     atualizar_fase_documento, listar_logs, get_or_create_sistema_user,
 )
+import time
+import logging
+import argparse
+
+# Certifique-se de que está exatamente assim, em linhas separadas ou bem limpo:
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # ============================================
 # FILTROS - AJUSTE CONFORME NECESSÁRIO
@@ -37,10 +47,32 @@ app = FastAPI(title="FastPrint - Linea Brasil")
 # CONFIGURAÇÕES
 # ============================================
 
-SEARCH_PATHS = [
-    r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\1 - EM LINHA",
-    r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
-]
+# 1. Configuração do interpretador de argumentos
+parser = argparse.ArgumentParser(description="Script de impressão automatizada.")
+
+# Adiciona o argumento que você quer passar. 
+# O 'default' define o que acontece se você NÃO passar o parâmetro.
+parser.add_argument(
+    "--ambiente", 
+    type=str, 
+    default="producao", 
+    help="Define o ambiente de execução (teste ou producao)"
+)
+
+# 2. Faz o Python ler o que foi digitado no terminal
+args = parser.parse_args()
+
+# 3. Agora você pode usar a variável em um IF
+if args.ambiente == "teste":
+    SEARCH_PATHS = [r"C:\shared"]
+else:    
+    SEARCH_PATHS = [
+        r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\1 - EM LINHA",
+        r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
+    ]
+
+logger.info(f"Iniciando processo de impressão: {SEARCH_PATHS}")
+exit()
 
 DEFAULT_PRINTER: Optional[str] = None
 
@@ -269,9 +301,16 @@ def stamp_pdf(pdf_path: str, codigo_rastreio: str, fase: str = None, usuario: st
 
 
 def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
+
+    start_time = time.perf_counter()  # Marca o início da execução
+    logger.info(f"Iniciando processo de impressão: {pdf_path}")
+
     if not Path(pdf_path).exists():
+        logger.error(f"Arquivo não encontrado no caminho especificado: {pdf_path}")
         return {"success": False, "error": f"Arquivo não encontrado: {pdf_path}"}
 
+    # Busca pelo executável
+    search_start = time.perf_counter()
     sumatra_paths = [
         os.path.expandvars(r"%LOCALAPPDATA%\SumatraPDF\SumatraPDF.exe"),
         r"C:\Users\{}\AppData\Local\SumatraPDF\SumatraPDF.exe".format(os.environ.get('USERNAME', '')),
@@ -291,29 +330,44 @@ def print_pdf(pdf_path: str, printer: Optional[str] = None) -> dict:
             result = subprocess.run(["where", "SumatraPDF.exe"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
                 sumatra_exe = result.stdout.strip().split('\n')[0]
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Erro ao tentar localizar Sumatra via 'where': {e}")
+
+    search_duration = time.perf_counter() - search_start
+    logger.debug(f"Busca pelo executável levou: {search_duration:.4f}s")
 
     if not sumatra_exe:
-        return {"success": False, "error": "SumatraPDF não encontrado. Instale ou adicione ao PATH."}
+        logger.error("Executável SumatraPDF não foi localizado no sistema.")
+        return {"success": False, "error": "SumatraPDF não encontrado."}
 
+    # Comando de impressão
     try:
         if printer:
             cmd = [sumatra_exe, "-print-to", printer, "-silent", pdf_path]
+            logger.info(f"Enviando para impressora específica: {printer}")
         else:
             cmd = [sumatra_exe, "-print-to-default", "-silent", pdf_path]
+            logger.info("Enviando para impressora padrão.")
 
+        process_start = time.perf_counter()
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        process_duration = time.perf_counter() - process_start
+
+        total_duration = time.perf_counter() - start_time
 
         if result.returncode == 0:
+            logger.info(f"Sucesso! Tempo do subprocesso: {process_duration:.2f}s | Tempo total: {total_duration:.2f}s")
             return {"success": True, "message": f"Enviado para impressão: {Path(pdf_path).name}"}
         else:
             error_msg = result.stderr or result.stdout or "Erro desconhecido"
+            logger.error(f"Erro no SumatraPDF (Code {result.returncode}): {error_msg}")
             return {"success": False, "error": error_msg}
 
     except subprocess.TimeoutExpired:
+        logger.error(f"Timeout após 60 segundos na tentativa de impressão.")
         return {"success": False, "error": "Timeout - impressão demorou demais"}
     except Exception as e:
+        logger.exception(f"Erro inesperado durante a execução: {e}")
         return {"success": False, "error": str(e)}
 
 # ============================================
