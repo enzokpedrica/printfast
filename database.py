@@ -1,27 +1,41 @@
 """
-Banco de Dados
-Gerencia usuários, logs de impressão e rastreio de documentos
+Banco de Dados - FastPrint
+
+Módulo responsável por toda a persistência de dados da aplicação.
+Gerencia:
+  - Usuários e autenticação (login, criação, ativação/desativação)
+  - Logs de impressão (histórico de operações)
+  - Rastreio de documentos impressos (código de rastreio, status, fase)
+  - Tokens de reset de senha
+
+Utiliza SQLite como banco de dados local (arquivo fastprint.db).
 """
 
 import sqlite3
+import logging
 from pathlib import Path
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# Configuração do logger para o módulo de banco de dados
+logger = logging.getLogger(__name__)
+
+# Caminho do arquivo do banco de dados SQLite (na mesma pasta do script)
 DB_PATH = Path(__file__).parent / "fastprint.db"
 
 def get_connection():
-    """Retorna conexão com o banco"""
+    """Retorna conexão com o banco SQLite com suporte a acesso por nome de coluna."""
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row  # Permite acessar colunas pelo nome (ex: row["id"])
     return conn
 
 def init_db():
-    """Cria as tabelas se não existirem"""
+    """Cria as tabelas do banco se ainda não existirem. Executado na inicialização."""
+    logger.info(f"Inicializando banco de dados: {DB_PATH}")
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Tabela de usuários
+    # Tabela de usuários do sistema (login e permissões)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +49,7 @@ def init_db():
         )
     """)
     
-    # Tabela de logs (mantida para compatibilidade)
+    # Tabela de logs de impressão (histórico geral, mantida para compatibilidade)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,7 +64,7 @@ def init_db():
         )
     """)
 
-    # Tabela de documentos impressos (rastreio)
+    # Tabela principal de rastreio: cada PDF impresso recebe um registro
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS documentos_impressos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -73,7 +87,7 @@ def init_db():
         )
     """)
 
-    # Contador diário para código de rastreio
+    # Contador sequencial diário para geração de códigos de rastreio únicos
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS contador_rastreio (
             data TEXT PRIMARY KEY,
@@ -81,7 +95,7 @@ def init_db():
         )
     """)
     
-    # Migrations para colunas adicionadas ao longo do tempo
+    # Migrations: adiciona colunas que foram incluídas após a criação inicial do banco
     migrations = [
         "ALTER TABLE documentos_impressos ADD COLUMN fase TEXT DEFAULT NULL",
         "ALTER TABLE usuarios ADD COLUMN role TEXT DEFAULT 'user'",
@@ -94,7 +108,7 @@ def init_db():
         except sqlite3.OperationalError:
             pass
 
-    # Tabela de tokens de reset de senha
+    # Tabela de tokens para recuperação de senha (expiráveis e de uso único)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS password_reset_tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,12 +122,17 @@ def init_db():
 
     conn.commit()
     conn.close()
+    logger.info("Banco de dados inicializado com sucesso")
 
 # ============================================
 # USUÁRIOS
+# Funções para gerenciamento de usuários:
+# criação, login, listagem, ativação/desativação
+# e atualização de dados.
 # ============================================
 
 def criar_usuario(nome: str, usuario: str, senha: str) -> bool:
+    """Cria um novo usuário com senha criptografada. Retorna False se o usuário já existir."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -124,11 +143,14 @@ def criar_usuario(nome: str, usuario: str, senha: str) -> bool:
         )
         conn.commit()
         conn.close()
+        logger.info(f"Usuário criado: {usuario}")
         return True
     except sqlite3.IntegrityError:
+        logger.warning(f"Tentativa de criar usuário duplicado: {usuario}")
         return False
 
 def verificar_login(usuario: str, senha: str) -> dict | None:
+    """Verifica credenciais de login. Retorna dados do usuário ou None se inválido."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -139,10 +161,13 @@ def verificar_login(usuario: str, senha: str) -> dict | None:
     conn.close()
 
     if row and row["ativo"] and check_password_hash(row["senha_hash"], senha):
+        logger.info(f"Login bem-sucedido: {usuario}")
         return {"id": row["id"], "nome": row["nome"], "usuario": row["usuario"], "role": row["role"] or "user"}
+    logger.warning(f"Tentativa de login falhou para usuário: {usuario}")
     return None
 
 def listar_usuarios():
+    """Retorna lista de todos os usuários cadastrados, ordenados por data de criação."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id, nome, usuario, role, ativo, criado_em FROM usuarios ORDER BY criado_em DESC")
@@ -151,20 +176,25 @@ def listar_usuarios():
     return [dict(row) for row in rows]
 
 def desativar_usuario(usuario_id: int):
+    """Desativa um usuário (soft delete), impedindo-o de fazer login."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE usuarios SET ativo = 0 WHERE id = ?", (usuario_id,))
     conn.commit()
     conn.close()
+    logger.info(f"Usuário desativado: ID {usuario_id}")
 
 def ativar_usuario(usuario_id: int):
+    """Reativa um usuário previamente desativado."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE usuarios SET ativo = 1 WHERE id = ?", (usuario_id,))
     conn.commit()
     conn.close()
+    logger.info(f"Usuário reativado: ID {usuario_id}")
 
 def get_usuario(user_id: int) -> dict | None:
+    """Busca um usuário pelo ID. Retorna dict com dados ou None."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -176,6 +206,7 @@ def get_usuario(user_id: int) -> dict | None:
     return dict(row) if row else None
 
 def criar_usuario_admin(nome: str, usuario: str, senha: str, role: str = "user") -> dict | None:
+    """Cria usuário com role específica (admin ou user). Usado pela administração."""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -187,11 +218,14 @@ def criar_usuario_admin(nome: str, usuario: str, senha: str, role: str = "user")
         user_id = cursor.lastrowid
         conn.commit()
         conn.close()
+        logger.info(f"Usuário admin criado: {usuario} (role={role})")
         return get_usuario(user_id)
     except sqlite3.IntegrityError:
+        logger.warning(f"Tentativa de criar usuário admin duplicado: {usuario}")
         return None
 
 def atualizar_usuario(user_id: int, nome: str = None, role: str = None, ativo: int = None) -> bool:
+    """Atualiza campos de um usuário. Apenas os parâmetros informados são alterados."""
     fields, values = [], []
     if nome is not None:
         fields.append("nome = ?"); values.append(nome)
@@ -209,9 +243,11 @@ def atualizar_usuario(user_id: int, nome: str = None, role: str = None, ativo: i
     affected = cursor.rowcount
     conn.commit()
     conn.close()
+    logger.info(f"Usuário atualizado: ID {user_id} | Campos: {fields}")
     return affected > 0
 
 def contar_admins_ativos() -> int:
+    """Conta quantos administradores ativos existem no sistema."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT COUNT(*) FROM usuarios WHERE role = 'admin' AND ativo = 1")
@@ -220,6 +256,7 @@ def contar_admins_ativos() -> int:
     return count
 
 def gerar_token_reset(user_id: int, token: str, expires_at: str):
+    """Cria um token de recuperação de senha para o usuário."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -228,8 +265,10 @@ def gerar_token_reset(user_id: int, token: str, expires_at: str):
     )
     conn.commit()
     conn.close()
+    logger.info(f"Token de reset gerado para usuário ID {user_id}")
 
 def get_token_reset(token: str) -> dict | None:
+    """Busca um token de reset e retorna dados do token e do usuário associado."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -243,6 +282,7 @@ def get_token_reset(token: str) -> dict | None:
     return dict(row) if row else None
 
 def usar_token_reset(token: str, nova_senha_hash: str) -> bool:
+    """Utiliza um token de reset para alterar a senha do usuário. Marca o token como usado."""
     conn = get_connection()
     cursor = conn.cursor()
     agora = datetime.now().isoformat()
@@ -259,16 +299,22 @@ def usar_token_reset(token: str, nova_senha_hash: str) -> bool:
     cursor.execute("UPDATE usuarios SET senha_hash = ?, updated_at = ? WHERE id = ?", (nova_senha_hash, agora, user_id))
     conn.commit()
     conn.close()
+    logger.info(f"Senha redefinida via token para usuário ID {user_id}")
     return True
 
 def registrar_log_auditoria(acao: str, user_id: int, target_id: int = None, detalhes: str = None):
-    print(f"[AUDIT] {datetime.now().isoformat()} | user={user_id} | acao={acao} | target={target_id} | {detalhes or ''}")
+    """Registra ações administrativas para auditoria (impresso no console)."""
+    logger.info(f"[AUDIT] user={user_id} | acao={acao} | target={target_id} | {detalhes or ''}")
 
 # ============================================
 # LOGS (compatibilidade)
+# Histórico geral de operações de impressão.
+# Mantido para compatibilidade com versões anteriores.
 # ============================================
 
 def registrar_log(usuario_id: int, produto: str, pasta: str, arquivos: list, impressora: str):
+    """Registra um log de impressão no banco com produto, arquivos e impressora utilizada."""
+    logger.info(f"Registrando log: produto='{produto}', {len(arquivos)} arquivo(s), impressora='{impressora}'")
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -280,6 +326,7 @@ def registrar_log(usuario_id: int, produto: str, pasta: str, arquivos: list, imp
     conn.close()
 
 def listar_logs(limite: int = 100):
+    """Retorna os últimos logs de impressão com nome do usuário associado."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -295,14 +342,19 @@ def listar_logs(limite: int = 100):
 
 # ============================================
 # RASTREIO DE DOCUMENTOS
+# Sistema de rastreio individual de cada PDF impresso.
+# Cada documento recebe um código único (FP-DATA-SEQ-PC)
+# e pode ter seu status atualizado (entregue → baixado)
+# e sua fase de produção definida.
 # ============================================
 
 def gerar_codigo_rastreio(computador: str) -> str:
-    """Gera código único: FP-AAAAMMDD-SEQ-PC"""
+    """Gera código de rastreio único no formato: FP-AAAAMMDD-SEQ-PC (sequencial diário)."""
     hoje = datetime.now().strftime("%Y%m%d")
     conn = get_connection()
     cursor = conn.cursor()
     
+    # Incrementa o contador do dia atual
     cursor.execute("INSERT OR IGNORE INTO contador_rastreio (data, contador) VALUES (?, 0)", (hoje,))
     cursor.execute("UPDATE contador_rastreio SET contador = contador + 1 WHERE data = ?", (hoje,))
     cursor.execute("SELECT contador FROM contador_rastreio WHERE data = ?", (hoje,))
@@ -310,9 +362,11 @@ def gerar_codigo_rastreio(computador: str) -> str:
     conn.commit()
     conn.close()
     
-    # Limita e limpa o nome do computador
+    # Limita e limpa o nome do computador (só alfanuméricos, máx 8 chars)
     pc = "".join(c for c in computador.upper() if c.isalnum())[:8]
-    return f"FP-{hoje}-{seq:04d}-{pc}"
+    codigo = f"FP-{hoje}-{seq:04d}-{pc}"
+    logger.info(f"Código de rastreio gerado: {codigo}")
+    return codigo
 
 def registrar_documento_impresso(
     codigo_rastreio: str,
@@ -324,6 +378,8 @@ def registrar_documento_impresso(
     usuario_id: int,
     fase: str = None
 ):
+    """Registra um documento impresso no banco para rastreio. Cada PDF tem seu próprio registro."""
+    logger.info(f"Registrando documento: {codigo_rastreio} | arquivo='{arquivo}' | produto='{produto}'")
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -335,6 +391,7 @@ def registrar_documento_impresso(
     conn.close()
 
 def listar_documentos(status: str = None, limite: int = 2000):
+    """Lista documentos impressos com dados dos usuários responsáveis (quem imprimiu, recolheu, baixou)."""
     conn = get_connection()
     cursor = conn.cursor()
     
@@ -361,7 +418,8 @@ def listar_documentos(status: str = None, limite: int = 2000):
     return [dict(row) for row in rows]
 
 def atualizar_status_documento(codigo_rastreio: str, novo_status: str, usuario_id: int) -> bool:
-    """Atualiza status: recolhido ou baixado"""
+    """Atualiza o status de um documento. Transição permitida: entregue → baixado."""
+    logger.info(f"Atualizando status: {codigo_rastreio} → '{novo_status}' (usuário ID {usuario_id})")
     conn = get_connection()
     cursor = conn.cursor()
     agora = datetime.now().isoformat()
@@ -382,6 +440,7 @@ def atualizar_status_documento(codigo_rastreio: str, novo_status: str, usuario_i
     return affected > 0
 
 def buscar_documento(codigo_rastreio: str) -> dict | None:
+    """Busca um documento específico pelo código de rastreio, incluindo dados dos usuários."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -401,7 +460,8 @@ def buscar_documento(codigo_rastreio: str) -> dict | None:
     return dict(row) if row else None
 
 def atualizar_fase_documento(codigo_rastreio: str, fase: str, por_produto: bool = False) -> int:
-    """Atualiza fase de um documento. Se por_produto=True, aplica a todos do mesmo produto."""
+    """Atualiza a fase de produção de um documento. Se por_produto=True, aplica a todos os documentos do mesmo produto."""
+    logger.info(f"Atualizando fase: {codigo_rastreio} → '{fase}' (por_produto={por_produto})")
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -422,7 +482,7 @@ def atualizar_fase_documento(codigo_rastreio: str, fase: str, por_produto: bool 
     return affected
 
 def get_or_create_sistema_user() -> int:
-    """Retorna o ID do usuário 'sistema', criando-o se não existir."""
+    """Retorna o ID do usuário 'sistema'. Cria automaticamente se não existir (usuário padrão do app)."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT id FROM usuarios WHERE usuario = 'sistema'")
@@ -438,5 +498,5 @@ def get_or_create_sistema_user() -> int:
     conn.close()
     return user_id
 
-# Inicializa o banco quando o módulo é importado
+# Inicializa o banco de dados automaticamente quando o módulo é importado
 init_db()

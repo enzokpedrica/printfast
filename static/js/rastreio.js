@@ -1,7 +1,21 @@
+/**
+ * Rastreio - Módulo de rastreamento de documentos impressos
+ * 
+ * Gerencia a tela de rastreio com:
+ * - Listagem paginada de documentos impressos
+ * - Filtros por status (entregue, baixado) e fase (Teste, Piloto, Padrão)
+ * - Busca textual por código, produto ou arquivo
+ * - Modais para atualização de fase e status dos documentos
+ * - Contadores de resumo (entregues/baixados)
+ */
+
 import { state } from './state.js?v=8';
 import { apiGetDocumentos, apiUpdateStatus, apiUpdateFase } from './api.js?v=8';
 import { showToast, closeModal } from './ui.js?v=8';
 
+/**
+ * Carrega todos os documentos do banco e renderiza a tabela de rastreio.
+ */
 export async function loadDocs() {
     try {
         const data = await apiGetDocumentos(2000);
@@ -14,6 +28,7 @@ export async function loadDocs() {
     }
 }
 
+/** Atualiza os contadores de resumo (entregues e baixados) no topo da tela. */
 export function updateSummary() {
     const entregue = state.allDocs.filter(d => d.status === 'entregue').length;
     const baixado  = state.allDocs.filter(d => d.status === 'baixado').length;
@@ -22,6 +37,7 @@ export function updateSummary() {
     document.getElementById('badgeEntregue').textContent = entregue;
 }
 
+/** Define o filtro de status ativo (todos, entregue, baixado). */
 export function setFilter(filter) {
     state.currentFilter     = filter;
     state.currentFaseFilter = null;
@@ -31,6 +47,7 @@ export function setFilter(filter) {
     renderDocs();
 }
 
+/** Define o filtro de fase ativo (Lote Teste, Piloto ou Padrão). */
 export function setFaseFilter(fase) {
     state.currentFaseFilter = fase;
     state.currentFilter     = 'todos';
@@ -42,14 +59,20 @@ export function setFaseFilter(fase) {
     renderDocs();
 }
 
+/** Reaplica os filtros e re-renderiza a tabela (chamado ao digitar na busca). */
 export function filterDocs() { state.currentPage = 1; renderDocs(); }
 
+/** Navega para uma página específica da tabela e faz scroll suave até o topo. */
 export function goToPage(page) {
     state.currentPage = page;
     renderDocs();
     document.getElementById('docsTableBody').closest('section').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+/**
+ * Renderiza a tabela de documentos com filtros, busca e paginação aplicados.
+ * Cada linha exibe: código de rastreio, produto, arquivo, fase, computador, data e status.
+ */
 export function renderDocs() {
     const search = document.getElementById('trackSearch').value.toLowerCase();
     let docs = state.allDocs;
@@ -141,12 +164,14 @@ function renderPagination(total, current, totalPages) {
         </select>`;
 }
 
+/** Altera a quantidade de documentos exibidos por página. */
 export function changePerPage(value) {
     state.perPage    = parseInt(value);
     state.currentPage = 1;
     renderDocs();
 }
 
+/** Monta o texto do tooltip com informações detalhadas de quem imprimiu, recolheu e baixou. */
 function buildTooltip(doc) {
     let tip = `Impresso por: ${doc.impresso_por_nome}`;
     if (doc.computador) tip += ` (${doc.computador})`;
@@ -156,6 +181,7 @@ function buildTooltip(doc) {
     return tip;
 }
 
+/** Gera o HTML da pill de fase (Teste/Piloto/Padrão) com cor correspondente. Clicável para editar. */
 function buildFasePill(doc) {
     const fase    = doc.fase;
     const codEsc  = doc.codigo_rastreio.replace(/'/g, "\\'");
@@ -169,7 +195,10 @@ function buildFasePill(doc) {
 }
 
 // ---- Modal de Fase ----
+// Permite definir a fase de produção de um documento (Lote Teste, Piloto, Padrão)
+// com opção de aplicar a todos os documentos do mesmo produto.
 
+/** Abre o modal de seleção de fase para um documento específico. */
 export function openFaseModal(codigo, produto, faseAtual) {
     state.pendingFaseUpdate = { codigo, produto };
     document.getElementById('faseModalProduto').textContent = produto;
@@ -188,6 +217,7 @@ export function openFaseModal(codigo, produto, faseAtual) {
     document.getElementById('faseModal').classList.add('show');
 }
 
+/** Marca visualmente a opção de fase selecionada no modal. */
 export function selectFaseOption(valor) {
     document.querySelectorAll('.fase-option').forEach(el => el.classList.remove('selected'));
     const radio = document.querySelector(`input[name=faseRadio][value="${valor}"]`);
@@ -197,6 +227,7 @@ export function selectFaseOption(valor) {
     }
 }
 
+/** Confirma a atualização de fase e envia ao backend. Recarrega a tabela ao concluir. */
 export async function confirmFaseUpdate() {
     if (!state.pendingFaseUpdate) return;
     const radio = document.querySelector('input[name=faseRadio]:checked');
@@ -225,7 +256,9 @@ export async function confirmFaseUpdate() {
 }
 
 // ---- Modal de Status ----
+// Permite dar baixa em documentos (confirmar recebimento físico).
 
+/** Abre o modal de confirmação para atualizar o status de um documento. */
 export function openStatusModal(codigo, novoStatus) {
     state.pendingStatusUpdate = { codigo, novoStatus };
     const configs = {
@@ -239,6 +272,7 @@ export function openStatusModal(codigo, novoStatus) {
     document.getElementById('statusModal').classList.add('show');
 }
 
+/** Confirma a atualização de status e envia ao backend. Recarrega a tabela ao concluir. */
 export async function confirmStatusUpdate() {
     if (!state.pendingStatusUpdate) return;
     closeModal('statusModal');

@@ -1,8 +1,22 @@
+/**
+ * Dashboard - Painel de indicadores e estatísticas
+ * 
+ * Exibe KPIs e gráficos sobre os documentos impressos:
+ * - Total impresso, entregues, baixados e taxa de baixa
+ * - Distribuição por fase de produção
+ * - Top produtos por quantidade de impressões
+ * - Impressões por computador/usuário
+ * - Últimas impressões realizadas
+ */
+
 import { state } from './state.js';
 import { apiGetDocumentos } from './api.js';
 import { showToast } from './ui.js';
 import { updateSummary } from './rastreio.js';
 
+/**
+ * Carrega dados do dashboard. Se os documentos já estão em memória, reutiliza.
+ */
 export async function loadDashboard() {
     if (state.allDocs.length === 0) {
         try {
@@ -17,6 +31,10 @@ export async function loadDashboard() {
     renderDashboard();
 }
 
+/**
+ * Renderiza todos os componentes visuais do dashboard:
+ * KPIs, barras de fase, tabela de produtos, barras de usuários e últimas impressões.
+ */
 export function renderDashboard() {
     const docs     = state.allDocs;
     const total    = docs.length;
@@ -32,7 +50,7 @@ export function renderDashboard() {
     document.getElementById('dTaxa').textContent      = `${taxa}%`;
     document.getElementById('dSemFase').textContent   = semFase;
 
-    // --- Fase bars ---
+    // --- Barras de distribuição por fase de produção ---
     const faseCounts = {
         'Lote Teste':  docs.filter(d => d.fase === 'Lote Teste').length,
         'Lote Piloto': docs.filter(d => d.fase === 'Lote Piloto').length,
@@ -51,7 +69,7 @@ export function renderDashboard() {
         </div>
     `).join('');
 
-    // --- Top produtos ---
+    // --- Top produtos: tabela com os 10 produtos mais impressos ---
     const prodMap = {};
     docs.forEach(d => {
         if (!prodMap[d.produto]) prodMap[d.produto] = { total: 0, entregue: 0, baixado: 0 };
@@ -72,7 +90,7 @@ export function renderDashboard() {
             </tr>
         `).join('');
 
-    // --- Usuários ---
+    // --- Impressões por computador/usuário ---
     const userMap = {};
     docs.forEach(d => {
         const u = d.impresso_por_nome || 'Desconhecido';
@@ -89,7 +107,7 @@ export function renderDashboard() {
             </div>
         `).join('');
 
-    // --- Recentes ---
+    // --- Últimas 10 impressões realizadas ---
     const recentes = [...docs].sort((a, b) => new Date(b.impresso_em) - new Date(a.impresso_em)).slice(0, 10);
     const statusIcons = {
         entregue: `<span class="status-pill status-entregue" style="font-size:0.7rem; padding:0.15rem 0.5rem;">Entregue</span>`,

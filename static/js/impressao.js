@@ -1,8 +1,23 @@
+/**
+ * Impressão - Módulo da tela de impressão de PDFs
+ * 
+ * Gerencia todo o fluxo de impressão:
+ * - Busca de produtos nas pastas compartilhadas
+ * - Seleção de produto e escaneamento de PDFs
+ * - Seleção/desseleção de arquivos individuais
+ * - Envio dos PDFs selecionados para a impressora
+ * - Acompanhamento do progresso de impressão
+ */
+
 import { state } from './state.js?v=8';
 import { apiSearch, apiGetPrinters, apiListPdfs, apiPrint } from './api.js?v=8';
 import { showToast, closeModal } from './ui.js?v=8';
 import { loadDocs } from './rastreio.js?v=8';
 
+/**
+ * Busca produtos nas pastas compartilhadas que correspondam ao texto digitado.
+ * Exibe os resultados como cards clicáveis na área de busca.
+ */
 export async function searchProducts(query) {
     const container = document.getElementById('searchResults');
     if (!query || query.length < 3) { container.innerHTML = ''; return; }
@@ -27,6 +42,9 @@ export async function searchProducts(query) {
     }
 }
 
+/**
+ * Seleciona um produto da busca: preenche o campo de caminho e inicia o escaneamento.
+ */
 export function selectProduct(path, name) {
     document.getElementById('folderPath').value = path;
     document.getElementById('searchInput').value = '';
@@ -37,6 +55,9 @@ export function selectProduct(path, name) {
     scanFolder();
 }
 
+/**
+ * Limpa a seleção atual de produto e volta ao estado inicial.
+ */
 export function clearSelection() {
     document.getElementById('folderPath').value = '';
     document.getElementById('selectedProduct').style.display = 'none';
@@ -45,6 +66,9 @@ export function clearSelection() {
     state.currentFiles = [];
 }
 
+/**
+ * Carrega as impressoras disponíveis do sistema e popula o select na interface.
+ */
 export async function loadPrinters() {
     try {
         const data = await apiGetPrinters();
@@ -61,6 +85,10 @@ export async function loadPrinters() {
     }
 }
 
+/**
+ * Escaneia a pasta informada e lista todos os PDFs encontrados nas subpastas ENG.
+ * Todos os arquivos iniciam selecionados por padrão.
+ */
 export async function scanFolder() {
     const path = document.getElementById('folderPath').value.trim();
     if (!path) { showToast('Digite o caminho da pasta', 'warning'); return; }
@@ -79,6 +107,9 @@ export async function scanFolder() {
     }
 }
 
+/**
+ * Renderiza a lista de PDFs encontrados como itens com checkbox.
+ */
 export function renderFiles() {
     const container = document.getElementById('fileList');
     if (state.currentFiles.length === 0) {
@@ -98,23 +129,27 @@ export function renderFiles() {
     `).join('');
 }
 
+/** Alterna a seleção de um arquivo individual pelo índice. */
 export function toggleFile(i) {
     state.currentFiles[i].selected = !state.currentFiles[i].selected;
     updateCounts();
 }
 
+/** Seleciona todos os PDFs da lista. */
 export function selectAll() {
     state.currentFiles.forEach(f => f.selected = true);
     renderFiles();
     updateCounts();
 }
 
+/** Desmarca todos os PDFs da lista. */
 export function deselectAll() {
     state.currentFiles.forEach(f => f.selected = false);
     renderFiles();
     updateCounts();
 }
 
+/** Atualiza os contadores de arquivos selecionados e o texto do botão de imprimir. */
 export function updateCounts() {
     const selected = state.currentFiles.filter(f => f.selected).length;
     const total    = state.currentFiles.length;
@@ -126,6 +161,10 @@ export function updateCounts() {
     btn.textContent = selected === total ? '🖨️ Imprimir Todos' : `🖨️ Imprimir ${selected} Selecionados`;
 }
 
+/**
+ * Abre o modal de confirmação de impressão com resumo do produto, impressora e arquivos.
+ * O usuário pode opcionalmente selecionar a fase de produção antes de confirmar.
+ */
 export function printSelected() {
     const selected = state.currentFiles.filter(f => f.selected);
     if (selected.length === 0) { showToast('Selecione pelo menos um arquivo', 'warning'); return; }
@@ -140,6 +179,10 @@ export function printSelected() {
     document.getElementById('confirmModal').classList.add('show');
 }
 
+/**
+ * Confirma a impressão: envia os PDFs selecionados ao backend.
+ * Atualiza o progresso visual e exibe o resultado (sucesso/falha por arquivo).
+ */
 export async function confirmPrint() {
     closeModal('confirmModal');
     const selected = state.currentFiles.filter(f => f.selected);

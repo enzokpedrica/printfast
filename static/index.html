@@ -1,3 +1,10 @@
+<!-- 
+    FastPrint - Sistema de Impressão em Lote - Linea Brasil
+    Interface web SPA (Single Page Application) com três abas:
+    1. Impressão: busca de produtos, seleção de PDFs e envio para impressora
+    2. Rastreio: acompanhamento de documentos impressos com filtros e paginação
+    3. Dashboard: indicadores e estatísticas gerais de impressão
+-->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -17,7 +24,7 @@
         </div>
     </header>
 
-    <!-- TABS -->
+    <!-- ABAS DE NAVEGAÇÃO -->
     <div class="tabs-bar">
         <button class="tab-btn active" onclick="switchTab('impressao')" id="tab-impressao">
             🖨️ Impressão
@@ -31,7 +38,7 @@
         </button>
     </div>
 
-    <!-- PAINEL: IMPRESSÃO -->
+    <!-- PAINEL: IMPRESSÃO - Busca de produtos e seleção de PDFs para imprimir -->
     <div class="tab-panel active" id="panel-impressao">
         <main class="main">
             <section class="section">
@@ -103,7 +110,7 @@
         </main>
     </div>
 
-    <!-- PAINEL: RASTREIO -->
+    <!-- PAINEL: RASTREIO - Acompanhamento de documentos impressos -->
     <div class="tab-panel" id="panel-rastreio">
         <main class="rastreio-main">
             <!-- Cards resumo -->
@@ -169,7 +176,7 @@
         </main>
     </div>
 
-    <!-- PAINEL: DASHBOARD -->
+    <!-- PAINEL: DASHBOARD - Indicadores e estatísticas de impressão -->
     <div class="tab-panel" id="panel-dashboard">
         <main class="dash-main">
 
@@ -258,7 +265,7 @@
     </div>
 </div>
 
-<!-- MODAL: Confirmar Impressão -->
+<!-- MODAL: Confirmação de Impressão - Resumo antes de enviar para a impressora -->
 <div class="modal-overlay" id="confirmModal">
     <div class="modal-box">
         <div class="modal-header"><span style="font-size: 1.5rem;">🖨️</span><h3>Confirmar Impressão</h3></div>
@@ -283,7 +290,7 @@
     </div>
 </div>
 
-<!-- MODAL: Fase -->
+<!-- MODAL: Definição de Fase de Produção (Lote Teste, Piloto ou Padrão) -->
 <div class="modal-overlay" id="faseModal">
     <div class="modal-box">
         <div class="modal-header"><span style="font-size: 1.5rem;">🏷️</span><h3>Definir Fase do Produto</h3></div>
