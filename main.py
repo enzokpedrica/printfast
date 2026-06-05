@@ -51,6 +51,14 @@ IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0",
 # Pastas que contêm documentos de montagem ou revisão (não devem ser escaneadas)
 IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM", "REVISAO", "REVISÃO"]
 
+"""Quando iniciamos a aplicação, a última linha possui a chamada de execução do uvicorn,
+dentro dessa chamada existem 3 parâmetros (app, host="0.0.0.0", port=8080)
+
+port = é a porta que a aplicação estará rodando
+host = no exemplo acima qualquer pc na rede conseguirá acessar a aplicação, mas caso eu coloque meu IP, somente eu conseguirei acesso
+app = é a  (objeto) que esta atribuída o FastAPI, o próprio FastAPI será quem organiza as rotas, no caso chega uma requisição /algumacoisa o FastAPI saberá
+    direcionar o que precisa ser "servido" para a requisição
+"""
 app = FastAPI(title="FastPrint - Linea Brasil")
 
 # ============================================
@@ -124,21 +132,28 @@ class FaseUpdateRequest(BaseModel):
 # manipulação de arquivos PDF.
 # ============================================
 
+#Essa função está sendo chamada em mais 2 funções que a utilizam
 def get_hostname() -> str:
     """Retorna o nome do computador que está executando a aplicação."""
     try:
+        """Usamos o socket.hostname para retornar o computador que está imprimindo os documentos
+        porem o que o gethostname está retornando é o PC da onde a aplicação esta rodando, ai temos um PROBLEMA
+        porque ou vai retornar sempre o nome do meu PC na Linea ou se algum dia estiver em servidor irá retornar o nome do Servidor na REDE"""
         return socket.gethostname()
     except:
         return "DESCONHECIDO"
 
+#Essa função está sendo chamada em mais 1 função
 def get_available_printers() -> list[str]:
     """Lista as impressoras disponíveis no sistema via CUPS."""
     try:
         import cups
         conn = cups.Connection()
         printers = conn.getPrinters()
+
         logger.info(f"Impressoras disponíveis: {list(printers.keys()) if printers else 'nenhuma'}")
         return list(printers.keys()) if printers else ["Impressora Padrão"]
+    
     except Exception as e:
         logger.warning(f"Erro ao listar impressoras via CUPS: {e}")
         return ["Impressora Padrão"]
@@ -160,6 +175,7 @@ def find_pdf_files(folder_path: str) -> list[dict]:
     pdf_files = []
 
     # Verifica se o nome da pasta segue o padrão de engenharia (ex: "ENG - 001 - ...")
+    # Verifica mais de uma nomenclatura, porque como salvamos o nome do PDF de forma manual pode ocorrer erros
     def is_eng_folder(name: str) -> bool:
         upper_name = name.upper()
         return (upper_name.startswith("ENG -") or
@@ -167,20 +183,44 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                 upper_name == "ENG")
 
     # Verifica se a pasta deve ser ignorada (montagem, revisão, etc.)
-    def should_ignore_folder(name: str) -> bool:
+    # def should_ignore_folder(name: str) -> bool:
+    #     upper_name = name.upper()
+    #     return any(termo in upper_name for termo in IGNORAR_PASTAS)
+
+    def pastas_ignoradas(name):
         upper_name = name.upper()
-        return any(termo in upper_name for termo in IGNORAR_PASTAS)
+
+        # IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM", "REVISAO", "REVISÃO"]
+        # Termo vai fazer o loop dentro desse array e verificar se o upper_name passado pra função tem aqui dentro
+        for termo in IGNORAR_PASTAS:
+            if termo in upper_name:
+                return True
+
+        return False
 
     # Verifica se o PDF é um template/modelo que deve ser ignorado
-    def should_ignore_pdf(name: str) -> bool:
+    # def should_ignore_pdf(name: str) -> bool:
+    #     upper_name = name.upper()
+    #     return any(termo in upper_name for termo in IGNORAR_PDFS)
+    
+    def ignorar_pdf(name):
         upper_name = name.upper()
-        return any(termo in upper_name for termo in IGNORAR_PDFS)
+
+        # IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0",
+        #                 "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V1",
+        #                 "ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V2"]
+        # Termo vai fazer o loop dentro desse array e verificar se o upper_name passado pra função tem aqui dentro
+        for termo in IGNORAR_PDFS:
+            if termo in upper_name:
+                return True
+
+        return False
 
     # Função recursiva que percorre subpastas coletando PDFs
     def scan_folder(folder: Path, parent_name: str = ""):
         for item in folder.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
-                if should_ignore_pdf(item.name):
+                if ignorar_pdf(item.name):
                     continue
                 display_folder = parent_name or folder.name
                 pdf_files.append({
@@ -189,19 +229,19 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                     "folder": display_folder,
                     "size_kb": round(item.stat().st_size / 1024, 1)
                 })
-            elif item.is_dir() and not should_ignore_folder(item.name):
+            elif item.is_dir() and not pastas_ignoradas(item.name):
                 scan_folder(item, parent_name or folder.name)
 
     # Percorre as subpastas da raiz buscando pastas ENG
     for subdir in path.iterdir():
-        if subdir.is_dir() and is_eng_folder(subdir.name) and not should_ignore_folder(subdir.name):
+        if subdir.is_dir() and is_eng_folder(subdir.name) and not pastas_ignoradas(subdir.name):
             scan_folder(subdir)
 
     # Caso a própria pasta raiz seja uma pasta ENG, escaneia seus PDFs diretos
     if is_eng_folder(path.name):
         for item in path.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
-                if not should_ignore_pdf(item.name):
+                if not ignorar_pdf(item.name):
                     pdf_files.append({
                         "name": item.name,
                         "path": str(item),
@@ -676,21 +716,21 @@ async def browse_folder(path: str = ""):
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
-# Ponto de entrada: inicia o servidor Uvicorn na porta 8080
+"""Ponto de entrada: inicia o servidor Uvicorn na porta 8080
+# o __name__ recebr main é uma atribuição do Python, logo sempre que rodarmos python main.py
+esse if será executado """
+
 if __name__ == "__main__":
     import uvicorn
 
-    # Inicializa o banco de dados (cria tabelas se necessário)
+    # Inicializa o banco de dados (cria tabelas se necessário) -- ESTUDAR A CHAMADA PRO BANCO DE DADOS, COMO VERIFICA SE JÁ ESTÃO CRIADAS AS TABELAS?
     from database import init_db
     init_db()
 
+    # Aqui são logs e print normal quando inicia a aplicação
     logger.info("Iniciando servidor FastPrint...")
-    print("\n" + "="*50)
-    print("FastPrint - Linea Brasil")
-    print("="*50)
     print(f"Acesse: http://localhost:8080")
     print(f"\nPara a equipe acessar, use seu IP local:")
     print(f"   http://SEU_IP:8080")
-    print("\n" + "="*50 + "\n")
 
     uvicorn.run(app, host="0.0.0.0", port=8080)
