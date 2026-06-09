@@ -71,6 +71,10 @@ else:
         r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
     ]
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> c2a05a8140d0bfed0a481b731ae003a2b8c4c9fb
 DEFAULT_PRINTER: Optional[str] = None
 
 # ============================================
