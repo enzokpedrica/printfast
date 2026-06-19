@@ -83,12 +83,12 @@ args = parser.parse_args()
 # Define os caminhos de busca de acordo com o ambiente selecionado
 if args.ambiente == "teste":
     # Ambiente de teste: usa pasta local para simulação
-    SEARCH_PATHS = [r"C:\shared"]
-else:    
+    SEARCH_PATHS = ["/mnt/c/shared"]
+else:
     # Ambiente de produção: pastas compartilhadas na rede (servidor de arquivos)
     SEARCH_PATHS = [
-        r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\1 - EM LINHA",
-        r"L:\Linea Brasil\6 Pesquisa e Desenvolvimento\1 - DOCUMENTOS\1 - DOCUMENTOS TECNICOS\3 - EM REVISAO",
+        "/mnt/xeon/Linea Brasil/6 Pesquisa e Desenvolvimento/1 - DOCUMENTOS/1 - DOCUMENTOS TECNICOS/1 - EM LINHA",
+        "/mnt/xeon/Linea Brasil/6 Pesquisa e Desenvolvimento/1 - DOCUMENTOS/1 - DOCUMENTOS TECNICOS/3 - EM REVISAO",
     ]
 
 logger.info(f"Ambiente: {args.ambiente} | Caminhos de busca: {SEARCH_PATHS}")
@@ -133,6 +133,21 @@ class FaseUpdateRequest(BaseModel):
 # ============================================
 
 #Essa função está sendo chamada em mais 2 funções que a utilizam
+DRIVE_MAP = {
+    "l": "/mnt/xeon",
+    "c": "/mnt/c",
+}
+
+def normalize_path(path: str) -> str:
+    """Converte paths Windows (L:\\...) para caminhos WSL (/mnt/xeon/...)."""
+    if len(path) >= 2 and path[1] == ":":
+        drive = path[0].lower()
+        rest = path[2:].replace("\\", "/")
+        base = DRIVE_MAP.get(drive, f"/mnt/{drive}")
+        return base + rest
+    return path.replace("\\", "/")
+
+
 def get_hostname() -> str:
     """Retorna o nome do computador que está executando a aplicação."""
     try:
@@ -505,7 +520,7 @@ async def list_printers():
 async def list_pdfs(request: FolderRequest):
     """Escaneia uma pasta de produto e retorna a lista de PDFs encontrados."""
     try:
-        pdfs = find_pdf_files(request.path)
+        pdfs = find_pdf_files(normalize_path(request.path))
         logger.info(f"Listagem de PDFs: {len(pdfs)} arquivo(s) em '{request.path}'")
         return {"success": True, "folder": request.path, "total": len(pdfs), "files": pdfs}
     except FileNotFoundError as e:
@@ -524,12 +539,13 @@ async def print_files(request: PrintRequest):
     3. Envia para a impressora via CUPS
     4. Registra o documento no banco de dados para rastreio
     """
+    request.folder_path = normalize_path(request.folder_path)
     logger.info(f"Requisição de impressão: pasta='{request.folder_path}', impressora='{request.printer}', "
                 f"fase='{request.fase}', arquivos={len(request.selected_files or [])}")
     try:
         # Usa os arquivos selecionados pelo usuário ou escaneia toda a pasta
         if request.selected_files:
-            pdfs = [{"path": f, "name": Path(f).name} for f in request.selected_files]
+            pdfs = [{"path": normalize_path(f), "name": Path(f).name} for f in request.selected_files]
         else:
             pdfs = find_pdf_files(request.folder_path)
 
@@ -683,7 +699,7 @@ async def browse_folder(path: str = ""):
         if not path:
             path = SEARCH_PATHS[0]
 
-        folder = Path(path)
+        folder = Path(normalize_path(path))
         logger.info(f"Navegando pasta: {folder}")
 
         if not folder.exists():
