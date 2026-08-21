@@ -1,5 +1,7 @@
 # 🖨️ PrintHub - Sistema de Impressão em Lote
 
+> Operação do servidor, deploy e diagnóstico: [docs/DEPLOY_PRODUCAO.md](docs/DEPLOY_PRODUCAO.md)
+
 Sistema para impressão automática de documentos PDF de produtos - Linea Brasil.
 
 ## 🚀 Instalação Rápida
