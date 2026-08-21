@@ -481,6 +481,84 @@ def atualizar_fase_documento(codigo_rastreio: str, fase: str, por_produto: bool 
     conn.close()
     return affected
 
+def obter_metricas_dashboard() -> dict:
+    """Retorna métricas agregadas de todo o histórico para o Dashboard."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    resumo = dict(cursor.execute("""
+        SELECT
+            COUNT(*) AS total,
+            SUM(CASE WHEN status = 'entregue' THEN 1 ELSE 0 END) AS entregues,
+            SUM(CASE WHEN status = 'baixado' THEN 1 ELSE 0 END) AS baixados,
+            SUM(CASE WHEN fase IS NULL OR TRIM(fase) = '' THEN 1 ELSE 0 END) AS sem_fase,
+            MIN(impresso_em) AS inicio,
+            MAX(impresso_em) AS fim
+        FROM documentos_impressos
+    """).fetchone())
+
+    fases = {
+        row["fase"]: row["total"]
+        for row in cursor.execute("""
+            SELECT COALESCE(NULLIF(TRIM(fase), ''), 'Sem fase') AS fase, COUNT(*) AS total
+            FROM documentos_impressos
+            GROUP BY COALESCE(NULLIF(TRIM(fase), ''), 'Sem fase')
+        """).fetchall()
+    }
+
+    top_produtos = [
+        dict(row) for row in cursor.execute("""
+            SELECT
+                produto,
+                COUNT(*) AS total,
+                SUM(CASE WHEN status = 'entregue' THEN 1 ELSE 0 END) AS entregues,
+                SUM(CASE WHEN status = 'baixado' THEN 1 ELSE 0 END) AS baixados
+            FROM documentos_impressos
+            GROUP BY produto
+            ORDER BY total DESC, produto
+            LIMIT 10
+        """).fetchall()
+    ]
+
+    computadores = [
+        dict(row) for row in cursor.execute("""
+            SELECT COALESCE(NULLIF(TRIM(computador), ''), 'Desconhecido') AS computador,
+                   COUNT(*) AS total
+            FROM documentos_impressos
+            GROUP BY COALESCE(NULLIF(TRIM(computador), ''), 'Desconhecido')
+            ORDER BY total DESC, computador
+            LIMIT 8
+        """).fetchall()
+    ]
+
+    recentes = [
+        dict(row) for row in cursor.execute("""
+            SELECT produto, arquivo, impresso_em, status
+            FROM documentos_impressos
+            ORDER BY impresso_em DESC, id DESC
+            LIMIT 10
+        """).fetchall()
+    ]
+    conn.close()
+
+    total = resumo["total"] or 0
+    baixados = resumo["baixados"] or 0
+    return {
+        "resumo": {
+            "total": total,
+            "entregues": resumo["entregues"] or 0,
+            "baixados": baixados,
+            "sem_fase": resumo["sem_fase"] or 0,
+            "taxa_baixa": round((baixados / total) * 100, 1) if total else 0.0,
+        },
+        "fases": fases,
+        "top_produtos": top_produtos,
+        "computadores": computadores,
+        "recentes": recentes,
+        "periodo": {"inicio": resumo["inicio"], "fim": resumo["fim"]},
+    }
+
+
 def get_or_create_sistema_user() -> int:
     """Retorna o ID do usuário 'sistema'. Cria automaticamente se não existir (usuário padrão do app)."""
     conn = get_connection()

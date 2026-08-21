@@ -10,9 +10,9 @@ define as rotas da API REST e contém as funções auxiliares para:
   - Registro de documentos impressos e rastreio de status
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pydantic import BaseModel
 from pathlib import Path
 import os
@@ -24,10 +24,13 @@ from database import (
     registrar_log, gerar_codigo_rastreio, registrar_documento_impresso,
     listar_documentos, atualizar_status_documento, buscar_documento,
     atualizar_fase_documento, listar_logs, get_or_create_sistema_user,
+    obter_metricas_dashboard,
 )
 import time
 import logging
 import argparse
+import secrets
+import threading
 
 # Configuração do sistema de logging para rastrear operações do servidor
 logging.basicConfig(
@@ -50,6 +53,35 @@ IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0",
 
 # Pastas que contêm documentos de montagem ou revisão (não devem ser escaneadas)
 IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM", "REVISAO", "REVISÃO"]
+
+# Regras das pastas técnicas que podem fornecer arquivos para impressão.
+# Cada regra limita a varredura à pasta de PDFs e evita entrar em arquivos-fonte
+# como "02 - ARQUIVO TOP". Novos tipos de documento podem ser adicionados aqui.
+REGRAS_DOCUMENTOS = [
+    {
+        "pastas_eng": ["ENG - 002 - FURAÇÃO", "ENG - 002 - FURACAO"],
+        "pasta_pdf": "01 - ARQUIVO PDF",
+        "permitir_pdfs_diretos": True,
+    },
+    {
+        "pastas_eng": ["ENG - 007 - GRAMPEAÇÃO", "ENG - 007 - GRAMPEACAO"],
+        "pasta_pdf": "01 - ARQUIVO PDF",
+        "permitir_pdfs_diretos": True,
+    },
+    {
+        "pastas_eng": ["ENG - 008 - USINAGEM"],
+        "subpastas_eng": [
+            ["ENG - 008 - COLADEIRA"],
+            ["ENG - 008 - COPIADORA"],
+            ["ENG - 008 - TUPIA"],
+        ],
+        "pasta_pdf": "01 - ARQUIVO PDF",
+        "permitir_pdfs_diretos": True,
+    },
+]
+
+# Impressoras permitidas (lista vazia = exibe todas)
+IMPRESSORAS_PERMITIDAS = ["Impressora_ppcp"]
 
 """Quando iniciamos a aplicação, a última linha possui a chamada de execução do uvicorn,
 dentro dessa chamada existem 3 parâmetros (app, host="0.0.0.0", port=8080)
@@ -78,7 +110,7 @@ parser.add_argument(
     help="Define o ambiente de execução (teste ou producao)"
 )
 
-args = parser.parse_args()
+args, _ = parser.parse_known_args()
 
 # Define os caminhos de busca de acordo com o ambiente selecionado
 if args.ambiente == "teste":
@@ -93,6 +125,68 @@ else:
 
 logger.info(f"Ambiente: {args.ambiente} | Caminhos de busca: {SEARCH_PATHS}")
 
+if args.ambiente == "teste":
+    ALLOWED_DOCUMENT_ROOTS = ["/mnt/c/shared"]
+else:
+    ALLOWED_DOCUMENT_ROOTS = [
+        *SEARCH_PATHS,
+        "/mnt/xeon/Linea Brasil/6 Pesquisa e Desenvolvimento/6 - PROJETOS/3 - PRODUTOS/4 - EM ANDAMENTO",
+    ]
+
+SCAN_CACHE_TTL_SECONDS = 600
+SCAN_CACHE_MAX_ENTRIES = 500
+MAX_PDFS_PER_PRINT = 100
+_scan_cache: dict[str, dict] = {}
+_scan_cache_lock = threading.Lock()
+_print_lock = threading.Lock()
+
+RATE_LIMITS = {
+    ("POST", "/api/list-pdfs"): (10, 60),
+    ("POST", "/api/print"): (5, 60),
+    ("GET", "/api/search"): (30, 60),
+    ("GET", "/api/browse"): (30, 60),
+}
+_rate_limit_store: dict[tuple[str, str, str], list[float]] = {}
+_rate_limit_lock = threading.Lock()
+
+
+def allow_rate_limited_request(client_ip: str, method: str, path: str) -> tuple[bool, int]:
+    """Aplica uma janela móvel simples por IP para rotas pesadas."""
+    config = RATE_LIMITS.get((method, path))
+    if not config:
+        return True, 0
+
+    limit, window = config
+    now = time.monotonic()
+    key = (client_ip, method, path)
+    with _rate_limit_lock:
+        recent = [
+            timestamp for timestamp in _rate_limit_store.get(key, [])
+            if timestamp > now - window
+        ]
+        if len(recent) >= limit:
+            retry_after = max(1, int(window - (now - recent[0])) + 1)
+            _rate_limit_store[key] = recent
+            return False, retry_after
+        recent.append(now)
+        _rate_limit_store[key] = recent
+    return True, 0
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    client_ip = request.client.host if request.client else "desconhecido"
+    allowed, retry_after = allow_rate_limited_request(
+        client_ip, request.method, request.url.path
+    )
+    if not allowed:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Muitas requisições. Aguarde e tente novamente."},
+            headers={"Retry-After": str(retry_after)},
+        )
+    return await call_next(request)
+
 
 # Impressora padrão (None = usa a padrão do sistema CUPS)
 DEFAULT_PRINTER: Optional[str] = None
@@ -106,6 +200,7 @@ DEFAULT_PRINTER: Optional[str] = None
 # Requisição de impressão: recebe pasta, impressora, arquivos selecionados e fase
 class PrintRequest(BaseModel):
     folder_path: str
+    scan_id: Optional[str] = None
     printer: Optional[str] = None
     selected_files: Optional[list[str]] = None
     fase: Optional[str] = None  # "Lote Teste", "Lote Piloto", "Lote Padrão"
@@ -140,12 +235,103 @@ DRIVE_MAP = {
 
 def normalize_path(path: str) -> str:
     """Converte paths Windows (L:\\...) para caminhos WSL (/mnt/xeon/...)."""
+    path = path.strip().strip('"').strip()
     if len(path) >= 2 and path[1] == ":":
         drive = path[0].lower()
         rest = path[2:].replace("\\", "/")
         base = DRIVE_MAP.get(drive, f"/mnt/{drive}")
         return base + rest
     return path.replace("\\", "/")
+
+
+def canonical_path(path: str | Path) -> Path:
+    """Normaliza e resolve um caminho para comparação segura."""
+    return Path(normalize_path(str(path))).resolve()
+
+
+def is_allowed_document_path(path: str | Path) -> bool:
+    """Confirma que o caminho pertence a uma das raízes técnicas autorizadas."""
+    candidate = canonical_path(path)
+    for root in ALLOWED_DOCUMENT_ROOTS:
+        try:
+            candidate.relative_to(Path(root).resolve())
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def create_scan_cache(folder_path: str, pdfs: list[dict]) -> tuple[str, int]:
+    """Armazena uma varredura válida em memória e retorna seu token temporário."""
+    now = time.monotonic()
+    scan_id = secrets.token_urlsafe(32)
+    files = {str(canonical_path(pdf["path"])): pdf for pdf in pdfs}
+    entry = {
+        "folder": str(canonical_path(folder_path)),
+        "files": files,
+        "created_at": now,
+        "expires_at": now + SCAN_CACHE_TTL_SECONDS,
+        "status": "ready",
+    }
+
+    with _scan_cache_lock:
+        expired = [
+            key for key, value in _scan_cache.items()
+            if value["expires_at"] <= now
+        ]
+        for key in expired:
+            _scan_cache.pop(key, None)
+
+        if len(_scan_cache) >= SCAN_CACHE_MAX_ENTRIES:
+            oldest = min(_scan_cache, key=lambda key: _scan_cache[key]["created_at"])
+            _scan_cache.pop(oldest, None)
+
+        _scan_cache[scan_id] = entry
+
+    return scan_id, SCAN_CACHE_TTL_SECONDS
+
+
+def get_cached_scan(scan_id: str) -> dict | None:
+    """Retorna uma varredura ainda válida ou remove o token expirado."""
+    now = time.monotonic()
+    with _scan_cache_lock:
+        entry = _scan_cache.get(scan_id)
+        if not entry:
+            return None
+        if entry["expires_at"] <= now:
+            _scan_cache.pop(scan_id, None)
+            return None
+        return entry
+
+
+def claim_cached_scan(scan_id: str) -> bool:
+    """Reserva atomicamente uma varredura para uma única impressão."""
+    with _scan_cache_lock:
+        entry = _scan_cache.get(scan_id)
+        if not entry or entry["expires_at"] <= time.monotonic():
+            _scan_cache.pop(scan_id, None)
+            return False
+        if entry["status"] != "ready":
+            return False
+        entry["status"] = "in_progress"
+        return True
+
+
+def finish_cached_scan(scan_id: str):
+    """Marca a varredura como usada, mesmo se a impressão falhar parcialmente."""
+    with _scan_cache_lock:
+        entry = _scan_cache.get(scan_id)
+        if entry:
+            entry["status"] = "used"
+
+
+def get_product_name(folder_path: str) -> str:
+    """Obtém o produto acima de '07 - DOCUMENTOS TECNICOS'."""
+    path = Path(normalize_path(folder_path))
+    for current in (path, *path.parents):
+        if current.name.upper() == "07 - DOCUMENTOS TECNICOS":
+            return current.parent.name
+    return path.name
 
 
 def get_hostname() -> str:
@@ -166,8 +352,11 @@ def get_available_printers() -> list[str]:
         conn = cups.Connection()
         printers = conn.getPrinters()
 
-        logger.info(f"Impressoras disponíveis: {list(printers.keys()) if printers else 'nenhuma'}")
-        return list(printers.keys()) if printers else ["Impressora Padrão"]
+        nomes = list(printers.keys())
+        if IMPRESSORAS_PERMITIDAS:
+            nomes = [p for p in nomes if p in IMPRESSORAS_PERMITIDAS]
+        logger.info(f"Impressoras disponíveis: {nomes if nomes else 'nenhuma'}")
+        return nomes if nomes else ["Impressora Padrão"]
     
     except Exception as e:
         logger.warning(f"Erro ao listar impressoras via CUPS: {e}")
@@ -176,10 +365,13 @@ def get_available_printers() -> list[str]:
 
 def find_pdf_files(folder_path: str) -> list[dict]:
     """
-    Varre a pasta do produto em busca de arquivos PDF dentro de subpastas ENG.
-    Ignora PDFs e pastas configurados nas listas de filtros.
+    Varre a pasta "07 - DOCUMENTOS TECNICOS" usando REGRAS_DOCUMENTOS.
+    Para furação, entra somente em
+    "ENG - 002 - FURAÇÃO/01 - ARQUIVO PDF".
+    Ignora arquivos-fonte, PDFs modelo e pastas de revisão.
     Retorna lista de dicts com nome, caminho, pasta e tamanho de cada PDF.
     """
+    folder_path = normalize_path(folder_path)
     path = Path(folder_path)
     logger.info(f"Iniciando varredura de PDFs na pasta: {folder_path}")
 
@@ -188,14 +380,6 @@ def find_pdf_files(folder_path: str) -> list[dict]:
         raise FileNotFoundError(f"Pasta não encontrada: {folder_path}")
 
     pdf_files = []
-
-    # Verifica se o nome da pasta segue o padrão de engenharia (ex: "ENG - 001 - ...")
-    # Verifica mais de uma nomenclatura, porque como salvamos o nome do PDF de forma manual pode ocorrer erros
-    def is_eng_folder(name: str) -> bool:
-        upper_name = name.upper()
-        return (upper_name.startswith("ENG -") or
-                upper_name.startswith("ENG-") or
-                upper_name == "ENG")
 
     # Verifica se a pasta deve ser ignorada (montagem, revisão, etc.)
     # def should_ignore_folder(name: str) -> bool:
@@ -231,38 +415,81 @@ def find_pdf_files(folder_path: str) -> list[dict]:
 
         return False
 
+    def adicionar_pdf(item: Path, display_folder: str):
+        if not ignorar_pdf(item.name):
+            pdf_files.append({
+                "name": item.name,
+                "path": str(item),
+                "folder": display_folder,
+                "size_kb": round(item.stat().st_size / 1024, 1)
+            })
+
     # Função recursiva que percorre subpastas coletando PDFs
     def scan_folder(folder: Path, parent_name: str = ""):
         for item in folder.iterdir():
             if item.is_file() and item.suffix.lower() == ".pdf":
-                if ignorar_pdf(item.name):
-                    continue
-                display_folder = parent_name or folder.name
-                pdf_files.append({
-                    "name": item.name,
-                    "path": str(item),
-                    "folder": display_folder,
-                    "size_kb": round(item.stat().st_size / 1024, 1)
-                })
+                adicionar_pdf(item, parent_name or folder.name)
             elif item.is_dir() and not pastas_ignoradas(item.name):
                 scan_folder(item, parent_name or folder.name)
 
-    # Percorre as subpastas da raiz buscando pastas ENG
-    for subdir in path.iterdir():
-        if subdir.is_dir() and is_eng_folder(subdir.name) and not pastas_ignoradas(subdir.name):
-            scan_folder(subdir)
+    # O caminho recebido deve apontar para "07 - DOCUMENTOS TECNICOS".
+    # Entra somente na pasta de PDFs; "02 - ARQUIVO TOP" não é lida.
+    subpastas_raiz = {
+        item.name.upper(): item
+        for item in path.iterdir()
+        if item.is_dir()
+    }
 
-    # Caso a própria pasta raiz seja uma pasta ENG, escaneia seus PDFs diretos
-    if is_eng_folder(path.name):
-        for item in path.iterdir():
-            if item.is_file() and item.suffix.lower() == ".pdf":
-                if not ignorar_pdf(item.name):
-                    pdf_files.append({
-                        "name": item.name,
-                        "path": str(item),
-                        "folder": path.name,
-                        "size_kb": round(item.stat().st_size / 1024, 1)
-                    })
+    def processar_pasta_documentos(pasta_documento: Path, regra: dict):
+        pasta_pdf = next(
+            (
+                item for item in pasta_documento.iterdir()
+                if item.is_dir() and item.name.upper() == regra["pasta_pdf"].upper()
+            ),
+            None,
+        )
+
+        if pasta_pdf and not pastas_ignoradas(pasta_pdf.name):
+            # Estrutura nova: usa somente "01 - ARQUIVO PDF".
+            scan_folder(pasta_pdf, pasta_documento.name)
+        elif regra.get("permitir_pdfs_diretos"):
+            # Estrutura legada: usa somente PDFs diretamente na pasta técnica.
+            # Não percorre ARQUIVO TOP, REVISAO ou qualquer outra subpasta.
+            for item in pasta_documento.iterdir():
+                if item.is_file() and item.suffix.lower() == ".pdf":
+                    adicionar_pdf(item, pasta_documento.name)
+
+    for regra in REGRAS_DOCUMENTOS:
+        pasta_eng = next(
+            (
+                subpastas_raiz[nome.upper()]
+                for nome in regra["pastas_eng"]
+                if nome.upper() in subpastas_raiz
+            ),
+            None,
+        )
+        if not pasta_eng or pastas_ignoradas(pasta_eng.name):
+            continue
+
+        if regra.get("subpastas_eng"):
+            subpastas_eng = {
+                item.name.upper(): item
+                for item in pasta_eng.iterdir()
+                if item.is_dir()
+            }
+            for nomes_subpasta in regra["subpastas_eng"]:
+                subpasta = next(
+                    (
+                        subpastas_eng[nome.upper()]
+                        for nome in nomes_subpasta
+                        if nome.upper() in subpastas_eng
+                    ),
+                    None,
+                )
+                if subpasta and not pastas_ignoradas(subpasta.name):
+                    processar_pasta_documentos(subpasta, regra)
+        else:
+            processar_pasta_documentos(pasta_eng, regra)
 
     logger.info(f"Varredura concluída: {len(pdf_files)} PDF(s) encontrado(s) em '{folder_path}'")
     return sorted(pdf_files, key=lambda x: (x["folder"], x["name"]))
@@ -460,6 +687,12 @@ async def get_logs(limite: int = 100):
 
 # --- RASTREIO DE DOCUMENTOS ---
 
+@app.get("/api/dashboard")
+async def get_dashboard():
+    """Retorna métricas agregadas de todo o histórico de impressão."""
+    return obter_metricas_dashboard()
+
+
 @app.get("/api/documentos")
 async def get_documentos(status: str = None, limite: int = 200):
     """Lista documentos impressos, opcionalmente filtrados por status."""
@@ -520,9 +753,23 @@ async def list_printers():
 async def list_pdfs(request: FolderRequest):
     """Escaneia uma pasta de produto e retorna a lista de PDFs encontrados."""
     try:
-        pdfs = find_pdf_files(normalize_path(request.path))
+        folder_path = normalize_path(request.path)
+        if not is_allowed_document_path(folder_path):
+            raise HTTPException(status_code=403, detail="Caminho fora das raízes autorizadas")
+
+        pdfs = find_pdf_files(folder_path)
+        scan_id, expires_in = create_scan_cache(folder_path, pdfs)
         logger.info(f"Listagem de PDFs: {len(pdfs)} arquivo(s) em '{request.path}'")
-        return {"success": True, "folder": request.path, "total": len(pdfs), "files": pdfs}
+        return {
+            "success": True,
+            "folder": request.path,
+            "total": len(pdfs),
+            "files": pdfs,
+            "scan_id": scan_id,
+            "expires_in": expires_in,
+        }
+    except HTTPException:
+        raise
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -542,20 +789,62 @@ async def print_files(request: PrintRequest):
     request.folder_path = normalize_path(request.folder_path)
     logger.info(f"Requisição de impressão: pasta='{request.folder_path}', impressora='{request.printer}', "
                 f"fase='{request.fase}', arquivos={len(request.selected_files or [])}")
+    print_lock_acquired = False
+    scan_claimed = False
     try:
-        # Usa os arquivos selecionados pelo usuário ou escaneia toda a pasta
-        if request.selected_files:
-            pdfs = [{"path": normalize_path(f), "name": Path(f).name} for f in request.selected_files]
-        else:
-            pdfs = find_pdf_files(request.folder_path)
+        if not request.scan_id:
+            raise HTTPException(status_code=400, detail="Varredura ausente. Clique em Escanear novamente.")
+
+        cached_scan = get_cached_scan(request.scan_id)
+        if not cached_scan:
+            raise HTTPException(status_code=410, detail="Varredura expirada. Clique em Escanear novamente.")
+        if cached_scan["status"] != "ready":
+            raise HTTPException(status_code=409, detail="Esta varredura já foi utilizada. Clique em Escanear novamente.")
+
+        request_folder = str(canonical_path(request.folder_path))
+        if request_folder != cached_scan["folder"]:
+            raise HTTPException(status_code=403, detail="A pasta não corresponde à varredura autorizada")
+
+        if request.printer and IMPRESSORAS_PERMITIDAS and request.printer not in IMPRESSORAS_PERMITIDAS:
+            raise HTTPException(status_code=403, detail="Impressora não autorizada")
+
+        selected_files = request.selected_files or []
+        pdfs = []
+        for selected_file in selected_files:
+            selected_path = str(canonical_path(selected_file))
+            cached_pdf = cached_scan["files"].get(selected_path)
+            if not cached_pdf:
+                raise HTTPException(status_code=403, detail=f"Arquivo não autorizado: {Path(selected_file).name}")
+            if not Path(selected_path).is_file():
+                raise HTTPException(status_code=404, detail=f"Arquivo não encontrado: {Path(selected_file).name}")
+            pdfs.append(cached_pdf)
 
         if not pdfs:
             logger.warning("Nenhum PDF encontrado para impressão")
             return {"success": False, "message": "Nenhum PDF para imprimir"}
+        if len(pdfs) > MAX_PDFS_PER_PRINT:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Máximo de {MAX_PDFS_PER_PRINT} PDFs por impressão"
+            )
+
+        if not _print_lock.acquire(blocking=False):
+            raise HTTPException(
+                status_code=409,
+                detail="Há outra impressão em andamento. Aguarde a conclusão."
+            )
+        print_lock_acquired = True
+
+        if not claim_cached_scan(request.scan_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Esta varredura já foi utilizada ou expirou. Clique em Escanear novamente."
+            )
+        scan_claimed = True
 
         usuario_id   = get_or_create_sistema_user()
         computador   = get_hostname()
-        produto      = Path(request.folder_path).name
+        produto      = get_product_name(request.folder_path)
         logger.info(f"Processando {len(pdfs)} PDF(s) do produto '{produto}' no computador '{computador}'")
 
         results = []
@@ -627,11 +916,18 @@ async def print_files(request: PrintRequest):
             "codigos_rastreio": codigos_gerados
         }
 
+    except HTTPException:
+        raise
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         logger.exception(f"Erro inesperado durante impressão: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if scan_claimed and request.scan_id:
+            finish_cached_scan(request.scan_id)
+        if print_lock_acquired:
+            _print_lock.release()
 
 
 @app.get("/api/search")

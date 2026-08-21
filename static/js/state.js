@@ -7,6 +7,7 @@
 export const state = {
     allDocs: [],              // Todos os documentos carregados do banco (rastreio)
     currentFiles: [],         // PDFs encontrados na pasta atual (tela de impressão)
+    currentScanId: null,       // Token temporário da última varredura autorizada
     currentFilter: 'todos',   // Filtro de status ativo na tela de rastreio
     currentFaseFilter: null,  // Filtro de fase ativo na tela de rastreio
     pendingStatusUpdate: null, // Dados da atualização de status pendente (modal)

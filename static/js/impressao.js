@@ -10,61 +10,9 @@
  */
 
 import { state } from './state.js?v=8';
-import { apiSearch, apiGetPrinters, apiListPdfs, apiPrint } from './api.js?v=8';
+import { apiGetPrinters, apiListPdfs, apiPrint } from './api.js?v=8';
 import { showToast, closeModal } from './ui.js?v=8';
 import { loadDocs } from './rastreio.js?v=8';
-
-/**
- * Busca produtos nas pastas compartilhadas que correspondam ao texto digitado.
- * Exibe os resultados como cards clicáveis na área de busca.
- */
-export async function searchProducts(query) {
-    const container = document.getElementById('searchResults');
-    if (!query || query.length < 3) { container.innerHTML = ''; return; }
-    container.innerHTML = '<div class="loading"><div class="spinner"></div>Buscando...</div>';
-    try {
-        const data = await apiSearch(query);
-        if (data.results.length === 0) {
-            container.innerHTML = `<div style="padding: 1rem; color: var(--text-secondary); text-align: center;">Nenhum produto encontrado</div>`;
-            return;
-        }
-        container.innerHTML = data.results.map(p => `
-            <div class="search-result-item" onclick="selectProduct('${p.path.replace(/\\/g, '\\\\')}', '${p.name}')">
-                <div class="search-result-info"><h4>${p.name}</h4><span>${p.path}</span></div>
-                <div class="search-result-meta">
-                    <div class="pdf-count">${p.pdf_count} PDFs</div>
-                    <div class="status">${p.status}</div>
-                </div>
-            </div>
-        `).join('');
-    } catch {
-        container.innerHTML = `<div style="padding: 1rem; color: var(--error);">Erro ao buscar</div>`;
-    }
-}
-
-/**
- * Seleciona um produto da busca: preenche o campo de caminho e inicia o escaneamento.
- */
-export function selectProduct(path, name) {
-    document.getElementById('folderPath').value = path;
-    document.getElementById('searchInput').value = '';
-    document.getElementById('searchResults').innerHTML = '';
-    document.getElementById('selectedProduct').style.display = 'flex';
-    document.getElementById('selectedProductName').textContent = name;
-    document.getElementById('selectedProductPath').textContent = path;
-    scanFolder();
-}
-
-/**
- * Limpa a seleção atual de produto e volta ao estado inicial.
- */
-export function clearSelection() {
-    document.getElementById('folderPath').value = '';
-    document.getElementById('selectedProduct').style.display = 'none';
-    document.getElementById('resultsSection').style.display = 'none';
-    document.getElementById('emptyState').style.display = 'block';
-    state.currentFiles = [];
-}
 
 /**
  * Carrega as impressoras disponíveis do sistema e popula o select na interface.
@@ -97,11 +45,14 @@ export async function scanFolder() {
     document.getElementById('fileList').innerHTML = '<div class="loading"><div class="spinner"></div>Escaneando...</div>';
     try {
         const data = await apiListPdfs(path);
+        state.currentScanId = data.scan_id;
         state.currentFiles = data.files.map(f => ({ ...f, selected: true }));
         renderFiles();
         updateCounts();
         showToast(`${data.total} arquivos encontrados`, data.total > 0 ? 'success' : 'warning');
     } catch (error) {
+        state.currentScanId = null;
+        state.currentFiles = [];
         showToast(error.message, 'error');
         document.getElementById('fileList').innerHTML = `<div class="empty-state"><div class="empty-state-icon">❌</div><h3>Erro ao escanear</h3><p>${error.message}</p></div>`;
     }
@@ -195,7 +146,7 @@ export async function confirmPrint() {
     document.getElementById('progressContainer').classList.add('active');
 
     try {
-        const data = await apiPrint(path, printer, selected.map(f => f.path), fase);
+        const data = await apiPrint(path, state.currentScanId, printer, selected.map(f => f.path), fase);
         let idx = 0;
         state.currentFiles.forEach((file, i) => {
             if (file.selected && data.results[idx]) {

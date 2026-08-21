@@ -11,6 +11,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FastPrint - Linea Brasil</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/main.css">
 </head>
@@ -27,42 +28,27 @@
     <!-- ABAS DE NAVEGAÇÃO -->
     <div class="tabs-bar">
         <button class="tab-btn active" onclick="switchTab('impressao')" id="tab-impressao">
-            🖨️ Impressão
+            Impressão
         </button>
         <button class="tab-btn" onclick="switchTab('rastreio')" id="tab-rastreio">
-            📋 Rastreio
+            Rastreio
             <span class="tab-badge" id="badgeEntregue">0</span>
         </button>
         <button class="tab-btn" onclick="switchTab('dashboard')" id="tab-dashboard">
-            📊 Dashboard
+            Dashboard
         </button>
     </div>
 
-    <!-- PAINEL: IMPRESSÃO - Busca de produtos e seleção de PDFs para imprimir -->
+    <!-- PAINEL: IMPRESSÃO - Seleção de PDFs para imprimir -->
     <div class="tab-panel active" id="panel-impressao">
         <main class="main">
             <section class="section">
-                <h2>🔍 Buscar Produto</h2>
-                <div class="search-wrapper">
-                    <input type="text" id="searchInput" placeholder="Digite o código ou nome do produto (ex: 819999991 ou AEREO)">
-                </div>
-                <div id="searchResults" class="search-results"></div>
-            </section>
-
-            <section class="section">
-                <h2>⚙️ Configuração</h2>
-                <div class="selected-product" id="selectedProduct" style="display: none;">
-                    <div class="selected-product-info">
-                        <h4 id="selectedProductName">-</h4>
-                        <span id="selectedProductPath">-</span>
-                    </div>
-                    <button class="btn btn-clear" onclick="clearSelection()">✕ Limpar</button>
-                </div>
+                <h2>Configuração</h2>
                 <div class="input-group">
                     <label>Caminho da Pasta do Produto</label>
                     <div class="input-wrapper">
                         <input type="text" id="folderPath" placeholder="L:\Linea Brasil\...\810015103 - AEREO 1.2M BLESS">
-                        <button class="btn btn-secondary" onclick="scanFolder()">🔍 Escanear</button>
+                        <button class="btn btn-secondary" onclick="scanFolder()">Escanear</button>
                     </div>
                 </div>
                 <div class="input-group">
@@ -104,7 +90,7 @@
                 <div class="empty-state">
                     <div class="empty-state-icon">📁</div>
                     <h3>Nenhuma pasta selecionada</h3>
-                    <p>Busque um produto ou cole o caminho da pasta e clique em "Escanear"</p>
+                    <p>Cole o caminho da pasta e clique em "Escanear"</p>
                 </div>
             </section>
         </main>
@@ -179,11 +165,14 @@
     <!-- PAINEL: DASHBOARD - Indicadores e estatísticas de impressão -->
     <div class="tab-panel" id="panel-dashboard">
         <main class="dash-main">
+            <div id="dashPeriodo" style="margin-bottom:1rem; color:var(--text-secondary); font-size:0.85rem;">
+                Todo o histórico
+            </div>
 
             <!-- KPIs -->
             <div class="dash-kpis">
                 <div class="kpi-card kpi-total">
-                    <div class="kpi-label">Total impresso</div>
+                    <div class="kpi-label">Documentos impressos</div>
                     <div class="kpi-value" id="dTotalDocs">0</div>
                     <div class="kpi-sub" id="dTotalSub">documentos</div>
                 </div>

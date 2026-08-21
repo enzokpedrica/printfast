@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Dados operacionais locais
+/fastprint.db
+/fastprint.db-*
+/backups/
+
+# Configurações e credenciais locais
+.env
+.env.*
+!.env.example
+/.claude/settings.local.json
+/create_user.txt
+
+# Evidências e arquivos locais de teste
+/Teste/
+
+# Logs e temporários
+*.log
+*.tmp

@@ -7,11 +7,10 @@
  * - Exposição de funções ao escopo global (necessário para onclick no HTML)
  */
 
-import { state } from './state.js?v=8';
 import { showToast, closeModal } from './ui.js?v=8';
 import { loadDocs, setFilter, setFaseFilter, filterDocs, goToPage, changePerPage, openFaseModal, selectFaseOption, confirmFaseUpdate, openStatusModal, confirmStatusUpdate } from './rastreio.js?v=8';
 import { loadDashboard } from './dashboard.js?v=6';
-import { searchProducts, selectProduct, clearSelection, loadPrinters, scanFolder, selectAll, deselectAll, toggleFile, printSelected, confirmPrint } from './impressao.js?v=8';
+import { loadPrinters, scanFolder, selectAll, deselectAll, toggleFile, printSelected, confirmPrint } from './impressao.js?v=8';
 
 // ============================================
 // ABAS - Navegação entre as telas do sistema
@@ -41,11 +40,6 @@ function initApp() {
     document.getElementById('folderPath').addEventListener('keypress', e => {
         if (e.key === 'Enter') scanFolder();
     });
-    // Busca de produtos com debounce de 300ms
-    document.getElementById('searchInput').addEventListener('input', e => {
-        clearTimeout(state.searchTimeout);
-        state.searchTimeout = setTimeout(() => searchProducts(e.target.value), 300);
-    });
     // Carrega documentos para a tela de rastreio
     loadDocs();
 }
@@ -61,8 +55,6 @@ window.switchTab           = switchTab;
 window.closeModal          = closeModal;
 
 // Funções da tela de impressão
-window.selectProduct       = selectProduct;
-window.clearSelection      = clearSelection;
 window.scanFolder          = scanFolder;
 window.selectAll           = selectAll;
 window.deselectAll         = deselectAll;

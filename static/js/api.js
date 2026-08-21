@@ -39,12 +39,23 @@ export async function apiListPdfs(path) {
  * Envia os PDFs selecionados para impressão.
  * Recebe caminho da pasta, impressora, lista de arquivos e fase de produção.
  */
-export async function apiPrint(folder_path, printer, selected_files, fase) {
+export async function apiPrint(folder_path, scan_id, printer, selected_files, fase) {
     const response = await fetch('/api/print', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ folder_path, printer, selected_files, fase: fase || null }),
+        body: JSON.stringify({ folder_path, scan_id, printer, selected_files, fase: fase || null }),
     });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Erro ao imprimir');
+    return data;
+}
+
+/**
+ * Busca métricas agregadas de todo o histórico para o Dashboard.
+ */
+export async function apiGetDashboard() {
+    const response = await fetch('/api/dashboard');
+    if (!response.ok) throw new Error('Erro ao carregar Dashboard');
     return response.json();
 }
 
