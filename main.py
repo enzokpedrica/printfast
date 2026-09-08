@@ -55,18 +55,13 @@ IGNORAR_PDFS = ["ENG - 011 - 510000000 - NOME PEÇA - P1-1 - V0",
 IGNORAR_PASTAS = ["- 003 -", "003 - MONTAGEM", "REVISAO", "REVISÃO"]
 
 # Regras das pastas técnicas que podem fornecer arquivos para impressão.
-# Cada regra limita a varredura à pasta de PDFs e evita entrar em arquivos-fonte
-# como "02 - ARQUIVO TOP". Novos tipos de documento podem ser adicionados aqui.
+# Os PDFs ficam diretamente nessas pastas; nenhuma subpasta é percorrida.
 REGRAS_DOCUMENTOS = [
     {
         "pastas_eng": ["ENG - 002 - FURAÇÃO", "ENG - 002 - FURACAO"],
-        "pasta_pdf": "01 - ARQUIVO PDF",
-        "permitir_pdfs_diretos": True,
     },
     {
         "pastas_eng": ["ENG - 007 - GRAMPEAÇÃO", "ENG - 007 - GRAMPEACAO"],
-        "pasta_pdf": "01 - ARQUIVO PDF",
-        "permitir_pdfs_diretos": True,
     },
     {
         "pastas_eng": ["ENG - 008 - USINAGEM"],
@@ -75,8 +70,6 @@ REGRAS_DOCUMENTOS = [
             ["ENG - 008 - COPIADORA"],
             ["ENG - 008 - TUPIA"],
         ],
-        "pasta_pdf": "01 - ARQUIVO PDF",
-        "permitir_pdfs_diretos": True,
     },
 ]
 
@@ -366,9 +359,8 @@ def get_available_printers() -> list[str]:
 def find_pdf_files(folder_path: str) -> list[dict]:
     """
     Varre a pasta "07 - DOCUMENTOS TECNICOS" usando REGRAS_DOCUMENTOS.
-    Para furação, entra somente em
-    "ENG - 002 - FURAÇÃO/01 - ARQUIVO PDF".
-    Ignora arquivos-fonte, PDFs modelo e pastas de revisão.
+    Coleta somente os PDFs diretamente nas pastas técnicas configuradas.
+    Nenhuma subpasta, incluindo REVISAO, é percorrida.
     Retorna lista de dicts com nome, caminho, pasta e tamanho de cada PDF.
     """
     folder_path = normalize_path(folder_path)
@@ -424,40 +416,19 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                 "size_kb": round(item.stat().st_size / 1024, 1)
             })
 
-    # Função recursiva que percorre subpastas coletando PDFs
-    def scan_folder(folder: Path, parent_name: str = ""):
-        for item in folder.iterdir():
-            if item.is_file() and item.suffix.lower() == ".pdf":
-                adicionar_pdf(item, parent_name or folder.name)
-            elif item.is_dir() and not pastas_ignoradas(item.name):
-                scan_folder(item, parent_name or folder.name)
-
     # O caminho recebido deve apontar para "07 - DOCUMENTOS TECNICOS".
-    # Entra somente na pasta de PDFs; "02 - ARQUIVO TOP" não é lida.
     subpastas_raiz = {
         item.name.upper(): item
         for item in path.iterdir()
         if item.is_dir()
     }
 
-    def processar_pasta_documentos(pasta_documento: Path, regra: dict):
-        pasta_pdf = next(
-            (
-                item for item in pasta_documento.iterdir()
-                if item.is_dir() and item.name.upper() == regra["pasta_pdf"].upper()
-            ),
-            None,
-        )
-
-        if pasta_pdf and not pastas_ignoradas(pasta_pdf.name):
-            # Estrutura nova: usa somente "01 - ARQUIVO PDF".
-            scan_folder(pasta_pdf, pasta_documento.name)
-        elif regra.get("permitir_pdfs_diretos"):
-            # Estrutura legada: usa somente PDFs diretamente na pasta técnica.
-            # Não percorre ARQUIVO TOP, REVISAO ou qualquer outra subpasta.
-            for item in pasta_documento.iterdir():
-                if item.is_file() and item.suffix.lower() == ".pdf":
-                    adicionar_pdf(item, pasta_documento.name)
+    def processar_pasta_documentos(pasta_documento: Path):
+        # A estrutura atual mantém os PDFs diretamente na pasta técnica.
+        # Diretórios encontrados aqui são deliberadamente ignorados.
+        for item in pasta_documento.iterdir():
+            if item.is_file() and item.suffix.lower() == ".pdf":
+                adicionar_pdf(item, pasta_documento.name)
 
     for regra in REGRAS_DOCUMENTOS:
         pasta_eng = next(
@@ -487,9 +458,9 @@ def find_pdf_files(folder_path: str) -> list[dict]:
                     None,
                 )
                 if subpasta and not pastas_ignoradas(subpasta.name):
-                    processar_pasta_documentos(subpasta, regra)
+                    processar_pasta_documentos(subpasta)
         else:
-            processar_pasta_documentos(pasta_eng, regra)
+            processar_pasta_documentos(pasta_eng)
 
     logger.info(f"Varredura concluída: {len(pdf_files)} PDF(s) encontrado(s) em '{folder_path}'")
     return sorted(pdf_files, key=lambda x: (x["folder"], x["name"]))
